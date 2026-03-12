@@ -45,3 +45,16 @@ def decode_email_confirm_token(token: str) -> str:
         return payload["sub"]
     except (JWTError, KeyError):
         raise ValueError("Токен недействителен или истёк")
+
+
+def create_reset_password_token(email: str) -> str:
+    return _create_token(email, "reset_password", timedelta(hours=1))
+
+def decode_password_reset_token(token: str) -> str:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "reset_password":
+            raise ValueError("Неверный тип токена")
+        return payload["sub"]
+    except (JWTError, KeyError):
+        raise ValueError("Токен недействителен или истёк")

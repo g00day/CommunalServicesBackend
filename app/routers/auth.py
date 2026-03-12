@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.schemas.auth import RegisterRequest, LoginRequest, RefreshRequest, TokenPair
+from app.schemas.auth import RegisterRequest, LoginRequest, RefreshRequest, TokenPair, PasswordResetConfirm
 from app.schemas.user import UserOut
-from app.services.auth import register_user, authenticate, refresh_tokens, issue_tokens, confirm_email
+from app.services.auth import register_user, authenticate, refresh_tokens, issue_tokens, confirm_email, reset_password, reset_password_confirm
 from app.dependencies import get_current_user
 from app.models.user import User
 
@@ -19,12 +19,21 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     await register_user(db, payload.email, payload.password, payload.name, payload.surname, payload.father_name)
     return {"detail": "Регистрация успешна. Проверьте почту для подтверждения email."}
 
-
 @router.get("/confirm-email", response_class=HTMLResponse)
 async def confirm_email_route(token: str, db: AsyncSession = Depends(get_db)):
     """Ссылка из письма. Активирует аккаунт и показывает HTML-страницу."""
     user = await confirm_email(db, token)
     return HTMLResponse(content=_success_page(user.full_name))
+
+@router.post("/request-password-reset")
+async def request_password_reset(email: str, db: AsyncSession = Depends(get_db)):
+    await reset_password(db, email)
+    return {"detail": "Проверьте почту для сброса пароля."}
+
+@router.put("/reset-password")
+async def reset_password_route(payload: PasswordResetConfirm, db: ...):
+    user = await reset_password_confirm(db, payload.token, payload.new_password)
+    return {"detail": "Пароль успешно изменён"}
 
 
 @router.post("/login", response_model=TokenPair)
@@ -61,8 +70,6 @@ async def me(current_user: User = Depends(get_current_user)):
         "uprava_id": current_user.uprava_id,
         "position": current_user.position,
     }
-
-@router.post("/")
 
 # активация без email (в будущем уберем)
 @router.post("/dev/activate", include_in_schema=settings.DEBUG, tags=["dev"])

@@ -8,8 +8,8 @@ from fastapi import HTTPException, status
 from app.models.user import User
 from app.models.role import Role
 from app.core.config import settings
-from app.core.security import (hash_password,verify_password,create_access_token, create_refresh_token, create_email_confirm_token, decode_email_confirm_token)
-from app.core.mail import send_confirmation_email
+from app.core.security import hash_password,verify_password,create_access_token, create_refresh_token, create_email_confirm_token, decode_email_confirm_token, create_reset_password_token, decode_password_reset_token
+from app.core.mail import send_confirmation_email, send_password_reset_email
 
 DEFAULT_ROLE_ID = 1
 
@@ -37,7 +37,17 @@ async def register_user(db: AsyncSession, email: str, password: str, name: str, 
 
     return user
 
-
+async def reset_password(db: AsyncSession, email: str):
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="Email не найден")
+    
+    token = create_reset_password_token(email)
+    await send_password_reset_email(email, token)
+    
+    return True
+    
 async def confirm_email(db: AsyncSession, token: str) -> User:
     try:
         email = decode_email_confirm_token(token)
@@ -56,6 +66,22 @@ async def confirm_email(db: AsyncSession, token: str) -> User:
     await db.refresh(user)
     return user
 
+async def reset_password_confirm(db: AsyncSession, token: str, new_password: str):
+    try:
+        email = decode_password_reset_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"{email} Пользователь не найден")
+
+    user.hash_pass = hash_password(new_password)
+    await db.commit()
+    await db.refresh(user)
+    return user
+    
 
 async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     result = await db.execute(select(User).where(User.email == email))

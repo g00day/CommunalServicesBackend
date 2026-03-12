@@ -36,6 +36,41 @@ async def send_confirmation_email(to_email: str, token: str) -> None:
         subject="Подтверждение email — ЖКХ Диспетчерская",
         recipients=[to_email],
         body=html,
-        subtype=MessageType.html,
+        subtype=MessageType.html
+    )
+    await _mailer.send_message(message)
+    
+async def send_password_reset_email(to_email: str, token: str) -> None: 
+    reset_url = f"{settings.APP_BASE_URL}/api/auth/reset-password?token={token}"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#2563eb;">Сброс пароля</h2>
+
+        <p>Вы запросили сброс пароля в системе <strong>ЖКХ Диспетчерская</strong>.</p>
+
+        <p>Нажмите на кнопку ниже, чтобы задать новый пароль:</p>
+
+        <a href="{reset_url}"
+           style="display:inline-block;padding:12px 24px;background:#2563eb;
+                  color:#fff;text-decoration:none;border-radius:6px;margin:16px 0;">
+            Сбросить пароль
+        </a>
+
+        <p style="color:#9ca3af;font-size:12px;">
+            Если кнопка не работает, скопируйте ссылку вручную:<br>
+            <a href="{reset_url}">{reset_url}</a>
+        </p>
+
+        <p style="color:#9ca3af;font-size:12px;">
+            Если вы не запрашивали сброс пароля, просто проигнорируйте это письмо.
+        </p>
+    </div>
+    """
+    
+    message = MessageSchema(
+        subject="Сброс пароля — ЖКХ Диспетчерская",
+        recipients=[to_email],
+        body=html,
+        subtype=MessageType.html
     )
     await _mailer.send_message(message)
