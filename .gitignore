@@ -3,7 +3,7 @@ __pycahche__/
 *.log
 
 # venvs
-.venv
+.venv/
 
 # env
 .env

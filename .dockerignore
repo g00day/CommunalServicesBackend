@@ -1,7 +1,10 @@
 .venv
 __pycache__
 *.pyc
-.git
-.gitignore
+*.pyo
+
 .env
-README.md
+
+.git
+
+.venv
