@@ -30,9 +30,9 @@ async def request_password_reset(email: str, db: AsyncSession = Depends(get_db))
     await reset_password(db, email)
     return {"detail": "Проверьте почту для сброса пароля."}
 
-@router.put("/reset-password")
-async def reset_password_route(payload: PasswordResetConfirm, db: AsyncSession = Depends(get_db)):
-    user = await reset_password_confirm(db, payload.token, payload.new_password)
+@router.put("/reset-password", response_class=HTMLResponse)
+async def reset_password_route(token: str, payload: PasswordResetConfirm, db: AsyncSession = Depends(get_db)):
+    user = await reset_password_confirm(db, token, payload.new_password)
     return {"detail": "Пароль успешно изменён"}
 
 
