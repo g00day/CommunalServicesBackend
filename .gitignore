@@ -1,11 +1,4 @@
-# python
 __pycahche__/
 *.log
-
-# venvs
 .venv/
-
-# env
 .env
-
-#
