@@ -2,22 +2,45 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
 from app.core.config import settings
-from app.schemas.auth import RegisterRequest, LoginRequest, RefreshRequest, TokenPair, PasswordResetConfirm
-from app.schemas.user import UserOut
-from app.services.auth import register_user, authenticate, refresh_tokens, issue_tokens, confirm_email, reset_password, reset_password_confirm
+from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.schemas.auth import (
+    LoginRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    RefreshRequest,
+    RegisterRequest,
+    TokenPair,
+)
+from app.schemas.user import UserOut
+from app.services.auth import (
+    authenticate,
+    confirm_email,
+    confirm_password_reset,
+    issue_tokens,
+    refresh_tokens,
+    register_user,
+    request_password_reset,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    """Регистрация. После успешной регистрации на email придёт ссылка для активации."""
-    await register_user(db, payload.email, payload.password, payload.name, payload.surname, payload.father_name)
+    """Регистрация. После успешной регистрации на email придет ссылка для активации."""
+    await register_user(
+        db,
+        payload.email,
+        payload.password,
+        payload.name,
+        payload.surname,
+        payload.father_name,
+    )
     return {"detail": "Регистрация успешна. Проверьте почту для подтверждения email."}
+
 
 @router.get("/confirm-email", response_class=HTMLResponse)
 async def confirm_email_route(token: str, db: AsyncSession = Depends(get_db)):
@@ -25,20 +48,28 @@ async def confirm_email_route(token: str, db: AsyncSession = Depends(get_db)):
     user = await confirm_email(db, token)
     return HTMLResponse(content=_success_page(user.full_name))
 
-@router.post("/request-password-reset")
-async def request_password_reset(email: str, db: AsyncSession = Depends(get_db)):
-    await reset_password(db, email)
-    return {"detail": "Проверьте почту для сброса пароля."}
 
-@router.put("/reset-password", response_class=HTMLResponse)
-async def reset_password_route(token: str, payload: PasswordResetConfirm, db: AsyncSession = Depends(get_db)):
-    user = await reset_password_confirm(db, token, payload.new_password)
-    return {"detail": "Пароль успешно изменён"}
+@router.post("/request-password-reset", response_model=dict)
+async def request_password_reset_route(
+    payload: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    await request_password_reset(db, payload.email)
+    return {"detail": "Если аккаунт с таким email существует, письмо для сброса пароля отправлено."}
+
+
+@router.post("/reset-password/confirm", response_model=dict)
+async def reset_password_confirm_route(
+    payload: PasswordResetConfirm,
+    db: AsyncSession = Depends(get_db),
+):
+    await confirm_password_reset(db, payload.token, payload.new_password)
+    return {"detail": "Пароль успешно изменен"}
 
 
 @router.post("/login", response_model=TokenPair)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """Вход. Возвращает access + refresh токены. 403 если email не подтверждён."""
+    """Вход. Возвращает access + refresh токены. 403 если email не подтвержден."""
     user = await authenticate(db, payload.email, payload.password)
     return issue_tokens(user)
 
@@ -51,7 +82,7 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(_: User = Depends(get_current_user)):
-    """Stateless logout — клиент удаляет токены у себя."""
+    """Stateless logout - клиент удаляет токены у себя."""
     return
 
 
@@ -71,27 +102,29 @@ async def me(current_user: User = Depends(get_current_user)):
         "position": current_user.position,
     }
 
-# активация без email (в будущем уберем)
+
 @router.post("/dev/activate", include_in_schema=settings.DEBUG, tags=["dev"])
 async def dev_activate(email: str, db: AsyncSession = Depends(get_db)):
     """Активирует аккаунт вручную. Виден только при DEBUG=True."""
     from sqlalchemy import select
-    from app.models.user import User
+
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if not user:
         from fastapi import HTTPException
+
         raise HTTPException(404, "Пользователь не найден")
     user.is_activated = True
     await db.commit()
     return {"detail": f"{email} активирован"}
+
 
 def _success_page(full_name: str) -> str:
     return f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Email подтверждён</title>
+    <title>Email подтвержден</title>
     <style>
         body {{ font-family:Arial,sans-serif; display:flex; justify-content:center;
                 align-items:center; min-height:100vh; margin:0; background:#f0f9ff; }}
@@ -103,8 +136,8 @@ def _success_page(full_name: str) -> str:
 </head>
 <body>
     <div class="card">
-        <div style="font-size:48px;margin-bottom:16px">✅</div>
-        <h1>Email подтверждён!</h1>
+        <div style="font-size:48px;margin-bottom:16px">OK</div>
+        <h1>Email подтвержден!</h1>
         <p>Добро пожаловать, <strong>{full_name}</strong>.<br>
         Аккаунт активирован. Можете войти в систему.</p>
     </div>
