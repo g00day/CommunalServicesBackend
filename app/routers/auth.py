@@ -7,11 +7,15 @@ from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
+    AdminCreateUserRequest,
     LoginRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
     RefreshRequest,
     RegisterRequest,
+    TelegramLinkCodeOut,
+    TelegramLinkConfirmOut,
+    TelegramLinkConfirmRequest,
     TokenPair,
 )
 from app.schemas.user import UserOut
@@ -19,6 +23,9 @@ from app.services.auth import (
     authenticate,
     confirm_email,
     confirm_password_reset,
+    confirm_telegram_link_code,
+    create_telegram_link_code,
+    create_user_by_admin,
     issue_tokens,
     refresh_tokens,
     register_user,
@@ -31,7 +38,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """Регистрация. После успешной регистрации на email придет ссылка для активации."""
-    await register_user(
+    await register_user( 
         db,
         payload.email,
         payload.password,
@@ -50,18 +57,14 @@ async def confirm_email_route(token: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/request-password-reset", response_model=dict)
-async def request_password_reset_route(
-    payload: PasswordResetRequest,
-    db: AsyncSession = Depends(get_db),
+async def request_password_reset_route( payload: PasswordResetRequest, db: AsyncSession = Depends(get_db),
 ):
     await request_password_reset(db, payload.email)
     return {"detail": "Если аккаунт с таким email существует, письмо для сброса пароля отправлено."}
 
 
 @router.post("/reset-password/confirm", response_model=dict)
-async def reset_password_confirm_route(
-    payload: PasswordResetConfirm,
-    db: AsyncSession = Depends(get_db),
+async def reset_password_confirm_route(payload: PasswordResetConfirm, db: AsyncSession = Depends(get_db),
 ):
     await confirm_password_reset(db, payload.token, payload.new_password)
     return {"detail": "Пароль успешно изменен"}
@@ -100,6 +103,64 @@ async def me(current_user: User = Depends(get_current_user)):
         "is_activated": current_user.is_activated,
         "uprava_id": current_user.uprava_id,
         "position": current_user.position,
+    }
+
+
+@router.post("/admin/create-user", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+async def admin_create_user(
+    payload: AdminCreateUserRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    user = await create_user_by_admin(
+        db=db,
+        current_user=current_user,
+        email=payload.email,
+        password=payload.password,
+        name=payload.name,
+        surname=payload.surname,
+        father_name=payload.father_name,
+        role_id=payload.role_id,
+        uprava_id=payload.uprava_id,
+        position=payload.position,
+        tg_chat_id=payload.tg_chat_id,
+    )
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "surname": user.surname,
+        "father_name": user.father_name,
+        "full_name": user.full_name,
+        "role": user.role.name,
+        "is_activated": user.is_activated,
+        "uprava_id": user.uprava_id,
+        "position": user.position,
+    }
+
+
+@router.post("/telegram/link-code", response_model=TelegramLinkCodeOut)
+async def generate_telegram_link_code(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    link_code = await create_telegram_link_code(db, current_user)
+    return {
+        "code": link_code.code,
+        "expires_at": link_code.expires_at.isoformat(),
+    }
+
+
+@router.post("/telegram/link-confirm", response_model=TelegramLinkConfirmOut)
+async def telegram_link_confirm(
+    payload: TelegramLinkConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await confirm_telegram_link_code(db, payload.code, payload.tg_chat_id)
+    return {
+        "detail": "Telegram chat successfully linked",
+        "user_id": user.id,
+        "tg_chat_id": user.tg_chat_id,
     }
 
 

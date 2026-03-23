@@ -35,3 +35,4 @@ async def get_current_user(
     if not user.is_activated:
         raise HTTPException(status_code=403, detail="Аккаунт деактивирован")
     return user
+

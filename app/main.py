@@ -6,7 +6,16 @@ from fastapi.openapi.utils import get_openapi
 
 from app.core.config import settings
 from app.core.db_init import init_db
-from app.routers import auth
+from app.routers import (
+    address,
+    auth,
+    chat_webhook,
+    report,
+    ticket_admin,
+    ticket_messages,
+    ticket_reference,
+    tickets,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +46,8 @@ def custom_openapi():
     }
     for path in schema.get("paths", {}).values():
         for operation in path.values():
+            if "chat-webhook" in operation.get("tags", []):
+                continue
             operation["security"] = [{"bearerAuth": []}]
     app.openapi_schema = schema
     return schema
@@ -51,3 +62,10 @@ async def health():
 
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(ticket_reference.router, prefix="/api")
+app.include_router(tickets.router, prefix="/api")
+app.include_router(ticket_messages.router, prefix="/api")
+app.include_router(chat_webhook.router, prefix="/api")
+app.include_router(ticket_admin.router, prefix="/api")
+app.include_router(address.router, prefix="/api")
+app.include_router(report.router, prefix="/api")

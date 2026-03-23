@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import secrets
 
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -17,9 +18,23 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.models.user import User
+from app.models import Role, TelegramLinkCode, User
 
 DEFAULT_ROLE_ID = 1
+ADMIN_ROLE_IDS = {3, 4}
+
+
+def _ensure_admin(user: User) -> None:
+    if user.role_id not in ADMIN_ROLE_IDS:
+        raise HTTPException(status_code=403, detail="Эндпоинт доступен только администратору")
+
+
+async def _ensure_role_exists(db: AsyncSession, role_id: int) -> Role:
+    result = await db.execute(select(Role).where(Role.id == role_id))
+    role = result.scalar_one_or_none()
+    if not role:
+        raise HTTPException(status_code=404, detail="Роль не найдена")
+    return role
 
 
 async def register_user(
@@ -50,6 +65,44 @@ async def register_user(
     token = create_email_confirm_token(email)
     await send_confirmation_email(email, token)
 
+    return user
+
+
+async def create_user_by_admin(
+    db: AsyncSession,
+    current_user: User,
+    email: str,
+    password: str,
+    name: str,
+    surname: str,
+    role_id: int,
+    father_name: str | None = None,
+    uprava_id: int | None = None,
+    position: str | None = None,
+    tg_chat_id: int | None = None,
+) -> User:
+    _ensure_admin(current_user)
+    await _ensure_role_exists(db, role_id)
+
+    existing = await db.execute(select(User).where(User.email == email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email уже зарегистрирован")
+
+    user = User(
+        email=email,
+        name=name,
+        surname=surname,
+        father_name=father_name,
+        hash_pass=hash_password(password),
+        role_id=role_id,
+        is_activated=True,
+        uprava_id=uprava_id,
+        position=position,
+        tg_chat_id=tg_chat_id,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
@@ -144,6 +197,80 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str) -> dict:
         raise exc
 
     return issue_tokens(user)
+
+
+async def _cleanup_expired_telegram_link_codes(db: AsyncSession) -> None:
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        delete(TelegramLinkCode).where(
+            TelegramLinkCode.expires_at < now,
+        )
+    )
+
+
+async def create_telegram_link_code(db: AsyncSession, current_user: User) -> TelegramLinkCode:
+    await _cleanup_expired_telegram_link_codes(db)
+    await db.execute(delete(TelegramLinkCode).where(TelegramLinkCode.user_id == current_user.id))
+
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.TELEGRAM_LINK_CODE_MINUTES)
+
+    code = ""
+    for _ in range(10):
+        candidate = f"{secrets.randbelow(1_000_000):06d}"
+        existing = await db.execute(
+            select(TelegramLinkCode).where(
+                TelegramLinkCode.code == candidate,
+                TelegramLinkCode.consumed_at.is_(None),
+                TelegramLinkCode.expires_at >= datetime.now(timezone.utc),
+            )
+        )
+        if existing.scalar_one_or_none() is None:
+            code = candidate
+            break
+
+    if not code:
+        raise HTTPException(status_code=500, detail="Не удалось сгенерировать код привязки Telegram")
+
+    link_code = TelegramLinkCode(
+        user_id=current_user.id,
+        code=code,
+        expires_at=expires_at,
+    )
+    db.add(link_code)
+    await db.commit()
+    await db.refresh(link_code)
+    return link_code
+
+
+async def confirm_telegram_link_code(db: AsyncSession, code: str, tg_chat_id: int) -> User:
+    await _cleanup_expired_telegram_link_codes(db)
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(TelegramLinkCode).where(
+            TelegramLinkCode.code == code,
+            TelegramLinkCode.consumed_at.is_(None),
+            TelegramLinkCode.expires_at >= now,
+        )
+    )
+    link_code = result.scalar_one_or_none()
+    if not link_code:
+        raise HTTPException(status_code=404, detail="Код привязки не найден или истек")
+
+    user_result = await db.execute(select(User).where(User.id == link_code.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь для привязки не найден")
+
+    await db.execute(
+        update(User)
+        .where(User.tg_chat_id == tg_chat_id, User.id != user.id)
+        .values(tg_chat_id=None)
+    )
+    user.tg_chat_id = tg_chat_id
+    link_code.consumed_at = now
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
 def issue_tokens(user: User) -> dict:
