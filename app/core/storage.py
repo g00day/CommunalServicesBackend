@@ -21,7 +21,7 @@ def _ensure_storage_config() -> tuple[str, str, str, str]:
     if missing:
         raise HTTPException(
             status_code=500,
-            detail=f"S3 storage is not configured: missing {', '.join(missing)}",
+            detail=f"S3-хранилище не настроено: отсутствуют параметры {', '.join(missing)}",
         )
 
     return (
@@ -49,7 +49,7 @@ def _extract_object_key(file_url: str | None = None, file_path: str | None = Non
     if file_path:
         return file_path.lstrip("/")
     if not file_url:
-        raise HTTPException(status_code=400, detail="File location is missing")
+        raise HTTPException(status_code=400, detail="Не указано расположение файла")
 
     parsed = urlparse(file_url)
     path = parsed.path.lstrip("/")
@@ -74,11 +74,11 @@ def _get_s3_client():
 
 async def upload_file_to_storage(upload_file: UploadFile, scope: str, owner_id: int) -> tuple[str, str]:
     if not upload_file.filename:
-        raise HTTPException(status_code=400, detail="File name is required")
+        raise HTTPException(status_code=400, detail="Не указано имя файла")
 
     file_bytes = await upload_file.read()
     if not file_bytes:
-        raise HTTPException(status_code=400, detail="Empty files are not allowed")
+        raise HTTPException(status_code=400, detail="Пустые файлы не допускаются")
 
     object_key = _build_object_key(scope, owner_id, upload_file.filename)
     content_type = upload_file.content_type or "application/octet-stream"
@@ -98,7 +98,7 @@ async def upload_file_to_storage(upload_file: UploadFile, scope: str, owner_id: 
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to upload file to storage: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Не удалось загрузить файл в хранилище: {exc}") from exc
 
 
 async def generate_download_url(file_url: str | None = None, file_path: str | None = None, expires_in: int = 3600) -> str:
@@ -120,4 +120,4 @@ async def generate_download_url(file_url: str | None = None, file_path: str | No
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to generate download URL: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Не удалось сформировать ссылку на скачивание: {exc}") from exc

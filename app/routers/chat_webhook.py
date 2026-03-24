@@ -14,7 +14,7 @@ def _validate_webhook_secret(x_webhook_secret: str | None) -> None:
     if not expected_secret:
         return
     if x_webhook_secret != expected_secret:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook secret")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный секретный ключ вебхука")
 
 
 @router.post("/webhook", response_model=WebhookMessageOut)

@@ -396,7 +396,7 @@ async def create_message_from_webhook_service(
 
     await db.commit()
     message = await _get_message(db, message.id)
-    return WebhookMessageOut(status="accepted", message=await _build_message_out_with_download_urls(message))
+    return WebhookMessageOut(status="принято", message=await _build_message_out_with_download_urls(message))
 
 
 async def upload_ticket_file_service(

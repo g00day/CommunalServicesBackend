@@ -158,7 +158,7 @@ async def telegram_link_confirm(
 ):
     user = await confirm_telegram_link_code(db, payload.code, payload.tg_chat_id)
     return {
-        "detail": "Telegram chat successfully linked",
+        "detail": "Чат Telegram успешно привязан",
         "user_id": user.id,
         "tg_chat_id": user.tg_chat_id,
     }

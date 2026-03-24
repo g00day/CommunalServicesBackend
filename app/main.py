@@ -74,7 +74,7 @@ app.openapi = custom_openapi
 
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok"}
+    return {"status": "работает"}
 
 
 app.include_router(auth.router, prefix="/api")
