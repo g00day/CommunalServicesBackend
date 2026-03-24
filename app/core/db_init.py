@@ -13,9 +13,11 @@ from app.core.permissions import (
     REPORTS_READ,
     ROLES_MANAGE,
     ROLES_READ,
+    TICKETS_DELETE,
     TICKETS_READ_ALL,
     TICKETS_UPDATE_STATUS,
     USERS_CREATE,
+    USERS_DELETE,
     USERS_READ,
     USERS_UPDATE,
 )
@@ -40,17 +42,19 @@ INITIAL_TICKET_STATUSES = [
 ]
 
 INITIAL_PERMISSIONS = [
-    {"id": 1, "code": ADMIN_ACCESS, "name": "Доступ в админ-панель", "description": "Вход в административный интерфейс"},
-    {"id": 2, "code": USERS_READ, "name": "Просмотр пользователей", "description": "Просмотр списка и карточек пользователей"},
-    {"id": 3, "code": USERS_CREATE, "name": "Создание пользователей", "description": "Создание новых пользователей"},
-    {"id": 4, "code": USERS_UPDATE, "name": "Редактирование пользователей", "description": "Изменение данных пользователей"},
-    {"id": 5, "code": ROLES_READ, "name": "Просмотр ролей", "description": "Просмотр ролей и их набора прав"},
-    {"id": 6, "code": ROLES_MANAGE, "name": "Управление ролями", "description": "Изменение ролей и назначенных им прав"},
-    {"id": 7, "code": TICKETS_READ_ALL, "name": "Просмотр всех заявок", "description": "Просмотр всех заявок независимо от автора"},
-    {"id": 8, "code": TICKETS_UPDATE_STATUS, "name": "Изменение статусов заявок", "description": "Обновление статусов заявок"},
-    {"id": 9, "code": ADDRESS_MANAGE, "name": "Управление адресами", "description": "Изменение управ, районов, улиц и адресов"},
-    {"id": 10, "code": REPORTS_READ, "name": "Просмотр отчетов", "description": "Доступ к отчетам по заявкам"},
-    {"id": 11, "code": CHAT_PARTICIPANTS_MANAGE, "name": "Управление участниками чата", "description": "Добавление участников в чаты заявок"},
+    {"code": ADMIN_ACCESS, "name": "Доступ в админ-панель", "description": "Вход в административный интерфейс"},
+    {"code": USERS_READ, "name": "Просмотр пользователей", "description": "Просмотр списка и карточек пользователей"},
+    {"code": USERS_CREATE, "name": "Создание пользователей", "description": "Создание новых пользователей"},
+    {"code": USERS_UPDATE, "name": "Редактирование пользователей", "description": "Изменение данных пользователей"},
+    {"code": USERS_DELETE, "name": "Удаление пользователей", "description": "Удаление пользователей"},
+    {"code": ROLES_READ, "name": "Просмотр ролей", "description": "Просмотр ролей и их набора прав"},
+    {"code": ROLES_MANAGE, "name": "Управление ролями", "description": "Изменение ролей и назначенных им прав"},
+    {"code": TICKETS_READ_ALL, "name": "Просмотр всех заявок", "description": "Просмотр всех заявок независимо от автора"},
+    {"code": TICKETS_UPDATE_STATUS, "name": "Изменение статусов заявок", "description": "Обновление статусов заявок"},
+    {"code": TICKETS_DELETE, "name": "Удаление заявок", "description": "Удаление заявок"},
+    {"code": ADDRESS_MANAGE, "name": "Управление адресами", "description": "Изменение управ, районов, улиц и адресов"},
+    {"code": REPORTS_READ, "name": "Просмотр отчетов", "description": "Доступ к отчетам по заявкам"},
+    {"code": CHAT_PARTICIPANTS_MANAGE, "name": "Управление участниками чата", "description": "Добавление участников в чаты заявок"},
 ]
 
 INITIAL_ROLE_PERMISSIONS = {
@@ -61,9 +65,11 @@ INITIAL_ROLE_PERMISSIONS = {
         USERS_READ,
         USERS_CREATE,
         USERS_UPDATE,
+        USERS_DELETE,
         ROLES_READ,
         TICKETS_READ_ALL,
         TICKETS_UPDATE_STATUS,
+        TICKETS_DELETE,
         ADDRESS_MANAGE,
         REPORTS_READ,
         CHAT_PARTICIPANTS_MANAGE,
@@ -73,10 +79,12 @@ INITIAL_ROLE_PERMISSIONS = {
         USERS_READ,
         USERS_CREATE,
         USERS_UPDATE,
+        USERS_DELETE,
         ROLES_READ,
         ROLES_MANAGE,
         TICKETS_READ_ALL,
         TICKETS_UPDATE_STATUS,
+        TICKETS_DELETE,
         ADDRESS_MANAGE,
         REPORTS_READ,
         CHAT_PARTICIPANTS_MANAGE,
@@ -298,6 +306,18 @@ async def seed_permissions(eng: AsyncEngine) -> None:
         return
 
     async with eng.begin() as conn:
+        await conn.execute(
+            text(
+                """
+                SELECT setval(
+                    pg_get_serial_sequence('permissions', 'id'),
+                    COALESCE((SELECT MAX(id) FROM permissions), 1),
+                    (SELECT COUNT(*) > 0 FROM permissions)
+                )
+                """
+            )
+        )
+
         for permission in INITIAL_PERMISSIONS:
             result = await conn.execute(
                 text("SELECT id FROM permissions WHERE code = :code"),
@@ -309,8 +329,8 @@ async def seed_permissions(eng: AsyncEngine) -> None:
                 await conn.execute(
                     text(
                         """
-                        INSERT INTO permissions (id, code, name, description)
-                        VALUES (:id, :code, :name, :description)
+                        INSERT INTO permissions (code, name, description)
+                        VALUES (:code, :name, :description)
                         """
                     ),
                     permission,

@@ -4,14 +4,35 @@ from starlette.requests import Request
 
 from app.core.permissions import (
     ADDRESS_MANAGE,
+    ADMIN_ACCESS,
     ROLES_MANAGE,
     ROLES_READ,
+    TICKETS_DELETE,
     TICKETS_READ_ALL,
     TICKETS_UPDATE_STATUS,
+    USERS_CREATE,
+    USERS_DELETE,
     USERS_READ,
     USERS_UPDATE,
 )
-from app.models import Address, District, Permission, Role, Street, Ticket, Uprava, User
+from app.models import (
+    Address,
+    Chat,
+    ChatParticipant,
+    District,
+    Message,
+    MessageFile,
+    Permission,
+    Role,
+    RolePermission,
+    Street,
+    TelegramLinkCode,
+    Ticket,
+    TicketFile,
+    TicketStatus,
+    Uprava,
+    User,
+)
 
 
 class RBACModelView(ModelView):
@@ -51,123 +72,89 @@ class RBACModelView(ModelView):
         return await super().delete_model(request, pk)
 
 
-class UserAdmin(RBACModelView, model=User):
-    name = "User"
-    name_plural = "Users"
-    icon = "fa-solid fa-users"
-    required_permission = USERS_READ
-    edit_permission = USERS_UPDATE
-    can_create = False
-    can_delete = False
-
-    column_list = [
-        User.id,
-        User.email,
-        User.surname,
-        User.name,
-        User.role_id,
-        User.is_activated,
-        User.created_at,
-    ]
-    column_searchable_list = [User.email, User.name, User.surname]
-    column_sortable_list = [User.id, User.email, User.created_at]
-    form_columns = [
-        User.email,
-        User.name,
-        User.surname,
-        User.father_name,
-        User.role,
-        User.is_activated,
-        User.uprava,
-        User.position,
-        User.tg_chat_id,
-    ]
-
-
-class TicketAdmin(RBACModelView, model=Ticket):
-    name = "Ticket"
-    name_plural = "Tickets"
-    icon = "fa-solid fa-ticket"
-    required_permission = TICKETS_READ_ALL
-    edit_permission = TICKETS_UPDATE_STATUS
-    can_create = False
-    can_delete = False
-
-    column_list = [
-        Ticket.id,
-        Ticket.title,
-        Ticket.status_id,
-        Ticket.user_id,
-        Ticket.address_id,
-        Ticket.opened_at,
-        Ticket.is_closed,
-    ]
-    column_searchable_list = [Ticket.title, Ticket.description]
-    column_sortable_list = [Ticket.id, Ticket.opened_at]
-    form_columns = [
-        Ticket.title,
-        Ticket.description,
-        Ticket.address,
-        Ticket.status,
-        Ticket.creator,
-        Ticket.is_closed,
-        Ticket.closed_at,
-    ]
-
-
-class RoleAdmin(RBACModelView, model=Role):
-    name = "Role"
-    name_plural = "Roles"
-    icon = "fa-solid fa-user-shield"
-    required_permission = ROLES_READ
-    edit_permission = ROLES_MANAGE
-    can_create = False
-    can_delete = False
-
-    column_list = [Role.id, Role.name]
-    form_columns = [Role.name, Role.permissions]
-
-
-class PermissionAdmin(RBACModelView, model=Permission):
-    name = "Permission"
-    name_plural = "Permissions"
-    icon = "fa-solid fa-key"
-    required_permission = ROLES_READ
+class ReadOnlyAdmin(RBACModelView):
     can_create = False
     can_edit = False
     can_delete = False
 
-    column_list = [Permission.id, Permission.code, Permission.name, Permission.description]
-    column_searchable_list = [Permission.code, Permission.name]
-    column_sortable_list = [Permission.id, Permission.code]
+
+class ManagedAdmin(RBACModelView):
+    required_permission = ADMIN_ACCESS
+    create_permission = ADMIN_ACCESS
+    edit_permission = ADMIN_ACCESS
+    delete_permission = ADMIN_ACCESS
+    can_create = True
+    can_edit = True
+    can_delete = True
 
 
-class AddressAdmin(RBACModelView, model=Address):
-    name = "Address"
+class UserAdmin(RBACModelView, model=User):
+    name = "Users"
+    name_plural = "Users"
+    icon = "fa-solid fa-users"
+    required_permission = USERS_READ
+    create_permission = USERS_CREATE
+    edit_permission = USERS_UPDATE
+    delete_permission = USERS_DELETE
+    can_create = False
+    can_delete = True
+    can_edit = True
+
+    column_list = [User.id, User.email, User.surname, User.name, User.role_id, User.uprava_id, User.position, User.is_activated, User.created_at]
+    column_searchable_list = [User.email, User.name, User.surname]
+    column_sortable_list = [User.id, User.email, User.created_at]
+    form_columns = [User.email, User.name, User.surname, User.father_name, User.role, User.is_activated, User.uprava, User.position, User.tg_chat_id]
+
+
+class TicketAdmin(RBACModelView, model=Ticket):
+    name = "Tickets"
+    name_plural = "Tickets"
+    icon = "fa-solid fa-ticket"
+    required_permission = TICKETS_READ_ALL
+    edit_permission = TICKETS_UPDATE_STATUS
+    delete_permission = TICKETS_DELETE
+    can_create = False
+    can_delete = True
+    can_edit = True
+
+    column_list = [Ticket.id, Ticket.title, Ticket.user_id, Ticket.address_id, Ticket.status_id, Ticket.opened_at, Ticket.closed_at, Ticket.is_closed]
+    column_searchable_list = [Ticket.title, Ticket.description]
+    column_sortable_list = [Ticket.id, Ticket.opened_at, Ticket.closed_at]
+    form_columns = [Ticket.title, Ticket.description, Ticket.address, Ticket.status, Ticket.creator, Ticket.is_closed, Ticket.closed_at]
+
+
+class AddressAdmin(ManagedAdmin, model=Address):
+    name = "Addresses"
     name_plural = "Addresses"
     icon = "fa-solid fa-location-dot"
     required_permission = ADDRESS_MANAGE
     create_permission = ADDRESS_MANAGE
     edit_permission = ADDRESS_MANAGE
     delete_permission = ADDRESS_MANAGE
-    
+
     column_list = [Address.id, Address.street_id, Address.house_number]
+    column_searchable_list = [Address.house_number]
+    column_sortable_list = [Address.id, Address.street_id, Address.house_number]
+    form_columns = [Address.street, Address.house_number]
 
 
-class UpravaAdmin(RBACModelView, model=Uprava):
-    name = "Uprava"
+class UpravaAdmin(ManagedAdmin, model=Uprava):
+    name = "Upravas"
     name_plural = "Upravas"
     icon = "fa-solid fa-building"
     required_permission = ADDRESS_MANAGE
     create_permission = ADDRESS_MANAGE
     edit_permission = ADDRESS_MANAGE
     delete_permission = ADDRESS_MANAGE
-    
+
     column_list = [Uprava.id, Uprava.name]
+    column_searchable_list = [Uprava.name]
+    column_sortable_list = [Uprava.id, Uprava.name]
+    form_columns = [Uprava.name]
 
 
-class DistrictAdmin(RBACModelView, model=District):
-    name = "District"
+class DistrictAdmin(ManagedAdmin, model=District):
+    name = "Districts"
     name_plural = "Districts"
     icon = "fa-solid fa-map"
     required_permission = ADDRESS_MANAGE
@@ -176,15 +163,128 @@ class DistrictAdmin(RBACModelView, model=District):
     delete_permission = ADDRESS_MANAGE
 
     column_list = [District.id, District.name, District.uprava_id]
+    column_searchable_list = [District.name]
+    column_sortable_list = [District.id, District.name, District.uprava_id]
+    form_columns = [District.uprava, District.name]
 
-class StreetAdmin(RBACModelView, model=Street):
-    name = "Street"
+
+class StreetAdmin(ManagedAdmin, model=Street):
+    name = "Streets"
     name_plural = "Streets"
     icon = "fa-solid fa-road"
     required_permission = ADDRESS_MANAGE
     create_permission = ADDRESS_MANAGE
     edit_permission = ADDRESS_MANAGE
     delete_permission = ADDRESS_MANAGE
-    
-    column_list = [Street.id, Street.name, Street.district_id]
 
+    column_list = [Street.id, Street.name, Street.district_id]
+    column_searchable_list = [Street.name]
+    column_sortable_list = [Street.id, Street.name, Street.district_id]
+    form_columns = [Street.district, Street.name]
+
+
+class ChatAdmin(ManagedAdmin, model=Chat):
+    name = "Chats"
+    name_plural = "Chats"
+    icon = "fa-solid fa-comments"
+    can_create = False
+
+    column_list = [Chat.id, Chat.ticket_id]
+    column_sortable_list = [Chat.id, Chat.ticket_id]
+    form_columns = [Chat.ticket]
+
+
+class ChatParticipantAdmin(ManagedAdmin, model=ChatParticipant):
+    name = "Chat Participants"
+    name_plural = "Chat Participants"
+    icon = "fa-solid fa-user-group"
+
+    column_list = [ChatParticipant.chat_id, ChatParticipant.user_id, ChatParticipant.role_in_chat, ChatParticipant.joined_at]
+    column_sortable_list = [ChatParticipant.chat_id, ChatParticipant.user_id, ChatParticipant.joined_at]
+    form_columns = [ChatParticipant.chat, ChatParticipant.user, ChatParticipant.role_in_chat]
+
+
+class MessageAdmin(ManagedAdmin, model=Message):
+    name = "Messages"
+    name_plural = "Messages"
+    icon = "fa-solid fa-envelope"
+
+    column_list = [Message.id, Message.chat_id, Message.sender_user_id, Message.text, Message.sent_at]
+    column_searchable_list = [Message.text]
+    column_sortable_list = [Message.id, Message.chat_id, Message.sent_at]
+    form_columns = [Message.chat, Message.sender, Message.text]
+
+
+class MessageFileAdmin(ManagedAdmin, model=MessageFile):
+    name = "Message Files"
+    name_plural = "Message Files"
+    icon = "fa-solid fa-file-lines"
+
+    column_list = [MessageFile.id, MessageFile.message_id, MessageFile.file_name, MessageFile.mime_type, MessageFile.uploaded_at]
+    column_searchable_list = [MessageFile.file_name, MessageFile.original_name]
+    column_sortable_list = [MessageFile.id, MessageFile.message_id, MessageFile.uploaded_at]
+    form_columns = [MessageFile.message, MessageFile.original_name, MessageFile.file_path, MessageFile.file_url, MessageFile.file_name, MessageFile.mime_type]
+
+
+class TicketFileAdmin(ManagedAdmin, model=TicketFile):
+    name = "Ticket Files"
+    name_plural = "Ticket Files"
+    icon = "fa-solid fa-paperclip"
+
+    column_list = [TicketFile.id, TicketFile.ticket_id, TicketFile.file_name, TicketFile.mime_type, TicketFile.uploaded_at]
+    column_searchable_list = [TicketFile.file_name, TicketFile.original_name]
+    column_sortable_list = [TicketFile.id, TicketFile.ticket_id, TicketFile.uploaded_at]
+    form_columns = [TicketFile.ticket, TicketFile.original_name, TicketFile.file_path, TicketFile.file_url, TicketFile.file_name, TicketFile.mime_type]
+
+
+class TelegramLinkCodeAdmin(ManagedAdmin, model=TelegramLinkCode):
+    name = "Telegram Codes"
+    name_plural = "Telegram Codes"
+    icon = "fa-brands fa-telegram"
+    can_create = False
+
+    column_list = [TelegramLinkCode.id, TelegramLinkCode.user_id, TelegramLinkCode.code, TelegramLinkCode.expires_at, TelegramLinkCode.consumed_at, TelegramLinkCode.created_at]
+    column_sortable_list = [TelegramLinkCode.id, TelegramLinkCode.user_id, TelegramLinkCode.expires_at, TelegramLinkCode.created_at]
+    form_columns = [TelegramLinkCode.user, TelegramLinkCode.code, TelegramLinkCode.expires_at, TelegramLinkCode.consumed_at]
+
+
+class TicketStatusAdmin(ReadOnlyAdmin, model=TicketStatus):
+    name = "Ticket Statuses"
+    name_plural = "Ticket Statuses"
+    icon = "fa-solid fa-list-check"
+    required_permission = ADMIN_ACCESS
+
+    column_list = [TicketStatus.id, TicketStatus.code, TicketStatus.name]
+    column_searchable_list = [TicketStatus.code, TicketStatus.name]
+    column_sortable_list = [TicketStatus.id, TicketStatus.code, TicketStatus.name]
+
+
+class RoleAdmin(ReadOnlyAdmin, model=Role):
+    name = "Roles"
+    name_plural = "Roles"
+    icon = "fa-solid fa-user-shield"
+    required_permission = ROLES_READ
+
+    column_list = [Role.id, Role.name]
+    form_columns = [Role.name, Role.permissions]
+
+
+class PermissionAdmin(ReadOnlyAdmin, model=Permission):
+    name = "Permissions"
+    name_plural = "Permissions"
+    icon = "fa-solid fa-key"
+    required_permission = ROLES_READ
+
+    column_list = [Permission.id, Permission.code, Permission.name, Permission.description]
+    column_searchable_list = [Permission.code, Permission.name]
+    column_sortable_list = [Permission.id, Permission.code]
+
+
+class RolePermissionAdmin(ReadOnlyAdmin, model=RolePermission):
+    name = "Role Permissions"
+    name_plural = "Role Permissions"
+    icon = "fa-solid fa-link"
+    required_permission = ROLES_READ
+
+    column_list = [RolePermission.role_id, RolePermission.permission_id]
+    column_sortable_list = [RolePermission.role_id, RolePermission.permission_id]

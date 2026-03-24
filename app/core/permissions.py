@@ -6,14 +6,16 @@ ADMIN_ACCESS = "admin.access"
 USERS_READ = "users.read"
 USERS_CREATE = "users.create"
 USERS_UPDATE = "users.update"
+USERS_DELETE = "users.delete"
 ROLES_READ = "roles.read"
 ROLES_MANAGE = "roles.manage"
 TICKETS_READ_ALL = "tickets.read.all"
 TICKETS_UPDATE_STATUS = "tickets.update.status"
+TICKETS_DELETE = "tickets.delete"
 ADDRESS_MANAGE = "address.manage"
 REPORTS_READ = "reports.read"
 CHAT_PARTICIPANTS_MANAGE = "chat.participants.manage"
-    
+
 
 def has_permission(user: User, permission_code: str) -> bool:
     return permission_code in user.permission_codes

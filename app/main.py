@@ -9,11 +9,19 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.admin.auth import AdminAuth
 from app.admin.views import (
     AddressAdmin,
+    ChatAdmin,
+    ChatParticipantAdmin,
     DistrictAdmin,
+    MessageAdmin,
+    MessageFileAdmin,
     PermissionAdmin,
     RoleAdmin,
+    RolePermissionAdmin,
     StreetAdmin,
+    TelegramLinkCodeAdmin,
     TicketAdmin,
+    TicketFileAdmin,
+    TicketStatusAdmin,
     UpravaAdmin,
     UserAdmin,
 )
@@ -91,9 +99,17 @@ admin = Admin(app=app, engine=engine, authentication_backend=authentication_back
 
 admin.add_view(UserAdmin)
 admin.add_view(TicketAdmin)
-admin.add_view(RoleAdmin)
-admin.add_view(PermissionAdmin)
 admin.add_view(AddressAdmin)
 admin.add_view(UpravaAdmin)
 admin.add_view(DistrictAdmin)
 admin.add_view(StreetAdmin)
+admin.add_view(ChatAdmin)
+admin.add_view(ChatParticipantAdmin)
+admin.add_view(MessageAdmin)
+admin.add_view(MessageFileAdmin)
+admin.add_view(TicketFileAdmin)
+admin.add_view(TelegramLinkCodeAdmin)
+admin.add_view(TicketStatusAdmin)
+admin.add_view(RoleAdmin)
+admin.add_view(PermissionAdmin)
+admin.add_view(RolePermissionAdmin)
