@@ -11,3 +11,5 @@ bcrypt==4.0.1
 fastapi-mail>=1.4.1
 python-multipart>=0.0.9
 boto3>=1.34.0
+sqladmin>=0.20.0
+itsdangerous>=2.2.0

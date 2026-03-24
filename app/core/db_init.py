@@ -6,7 +6,20 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.sql.schema import DefaultClause
 
 from app.core.database import engine
-from app.models import Base  # регистрирует все модели
+from app.core.permissions import (
+    ADDRESS_MANAGE,
+    ADMIN_ACCESS,
+    CHAT_PARTICIPANTS_MANAGE,
+    REPORTS_READ,
+    ROLES_MANAGE,
+    ROLES_READ,
+    TICKETS_READ_ALL,
+    TICKETS_UPDATE_STATUS,
+    USERS_CREATE,
+    USERS_READ,
+    USERS_UPDATE,
+)
+from app.models import Base
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +39,50 @@ INITIAL_TICKET_STATUSES = [
     {"id": 6, "code": "rejected", "name": "Отклонена"},
 ]
 
+INITIAL_PERMISSIONS = [
+    {"id": 1, "code": ADMIN_ACCESS, "name": "Доступ в админ-панель", "description": "Вход в административный интерфейс"},
+    {"id": 2, "code": USERS_READ, "name": "Просмотр пользователей", "description": "Просмотр списка и карточек пользователей"},
+    {"id": 3, "code": USERS_CREATE, "name": "Создание пользователей", "description": "Создание новых пользователей"},
+    {"id": 4, "code": USERS_UPDATE, "name": "Редактирование пользователей", "description": "Изменение данных пользователей"},
+    {"id": 5, "code": ROLES_READ, "name": "Просмотр ролей", "description": "Просмотр ролей и их набора прав"},
+    {"id": 6, "code": ROLES_MANAGE, "name": "Управление ролями", "description": "Изменение ролей и назначенных им прав"},
+    {"id": 7, "code": TICKETS_READ_ALL, "name": "Просмотр всех заявок", "description": "Просмотр всех заявок независимо от автора"},
+    {"id": 8, "code": TICKETS_UPDATE_STATUS, "name": "Изменение статусов заявок", "description": "Обновление статусов заявок"},
+    {"id": 9, "code": ADDRESS_MANAGE, "name": "Управление адресами", "description": "Изменение управ, районов, улиц и адресов"},
+    {"id": 10, "code": REPORTS_READ, "name": "Просмотр отчетов", "description": "Доступ к отчетам по заявкам"},
+    {"id": 11, "code": CHAT_PARTICIPANTS_MANAGE, "name": "Управление участниками чата", "description": "Добавление участников в чаты заявок"},
+]
+
+INITIAL_ROLE_PERMISSIONS = {
+    1: [],
+    2: [TICKETS_READ_ALL, TICKETS_UPDATE_STATUS, REPORTS_READ, CHAT_PARTICIPANTS_MANAGE],
+    3: [
+        ADMIN_ACCESS,
+        USERS_READ,
+        USERS_CREATE,
+        USERS_UPDATE,
+        ROLES_READ,
+        TICKETS_READ_ALL,
+        TICKETS_UPDATE_STATUS,
+        ADDRESS_MANAGE,
+        REPORTS_READ,
+        CHAT_PARTICIPANTS_MANAGE,
+    ],
+    4: [
+        ADMIN_ACCESS,
+        USERS_READ,
+        USERS_CREATE,
+        USERS_UPDATE,
+        ROLES_READ,
+        ROLES_MANAGE,
+        TICKETS_READ_ALL,
+        TICKETS_UPDATE_STATUS,
+        ADDRESS_MANAGE,
+        REPORTS_READ,
+        CHAT_PARTICIPANTS_MANAGE,
+    ],
+}
+
 
 async def wait_for_db(eng: AsyncEngine, retries: int = 15, delay: float = 3.0) -> None:
     for attempt in range(1, retries + 1):
@@ -35,21 +92,23 @@ async def wait_for_db(eng: AsyncEngine, retries: int = 15, delay: float = 3.0) -
             logger.info("Подключение к БД установлено")
             return
         except Exception as e:
-            logger.warning(f"БД недоступна (попытка {attempt}/{retries}): {e}")
+            logger.warning("БД недоступна (попытка %s/%s): %s", attempt, retries, e)
             if attempt < retries:
                 await asyncio.sleep(delay)
     raise RuntimeError("Не удалось подключиться к БД")
 
 
 async def table_exists(eng: AsyncEngine, table_name: str, schema: str = "public") -> bool:
-    query = text("""
+    query = text(
+        """
         SELECT EXISTS (
             SELECT 1
             FROM information_schema.tables
             WHERE table_schema = :schema
               AND table_name = :table_name
         )
-    """)
+        """
+    )
     async with eng.connect() as conn:
         result = await conn.execute(query, {"schema": schema, "table_name": table_name})
         return bool(result.scalar())
@@ -63,14 +122,16 @@ async def create_tables_if_not_exist(eng: AsyncEngine) -> None:
 
         for table_name in model_tables:
             result = await conn.execute(
-                text("""
+                text(
+                    """
                     SELECT EXISTS (
                         SELECT 1
                         FROM information_schema.tables
                         WHERE table_schema = 'public'
                           AND table_name = :table_name
                     )
-                """),
+                    """
+                ),
                 {"table_name": table_name},
             )
             if result.scalar():
@@ -87,7 +148,7 @@ async def create_tables_if_not_exist(eng: AsyncEngine) -> None:
             table = Base.metadata.tables[table_name]
             await conn.run_sync(lambda sync_conn, t=table: t.create(sync_conn, checkfirst=True))
 
-    logger.info(f"Созданы отсутствующие таблицы: {', '.join(missing_tables)}")
+    logger.info("Созданы отсутствующие таблицы: %s", ", ".join(missing_tables))
 
 
 def _compile_server_default(default: DefaultClause, dialect) -> str:
@@ -212,12 +273,14 @@ async def sync_ticket_status_codes(eng: AsyncEngine) -> None:
 
         for status_item in INITIAL_TICKET_STATUSES:
             result = await conn.execute(
-                text("""
+                text(
+                    """
                     UPDATE ticket_statuses
                     SET code = :code
                     WHERE id = :id
                       AND (code IS NULL OR code = '')
-                """),
+                    """
+                ),
                 {"id": status_item["id"], "code": status_item["code"]},
             )
             if result.rowcount and result.rowcount > 0:
@@ -229,6 +292,84 @@ async def sync_ticket_status_codes(eng: AsyncEngine) -> None:
         logger.info("Коды статусов заявок уже заполнены")
 
 
+async def seed_permissions(eng: AsyncEngine) -> None:
+    if not await table_exists(eng, "permissions"):
+        logger.warning("Таблица permissions не существует, пропускаю заполнение")
+        return
+
+    async with eng.begin() as conn:
+        for permission in INITIAL_PERMISSIONS:
+            result = await conn.execute(
+                text("SELECT id FROM permissions WHERE code = :code"),
+                {"code": permission["code"]},
+            )
+            existing_id = result.scalar_one_or_none()
+
+            if existing_id is None:
+                await conn.execute(
+                    text(
+                        """
+                        INSERT INTO permissions (id, code, name, description)
+                        VALUES (:id, :code, :name, :description)
+                        """
+                    ),
+                    permission,
+                )
+            else:
+                await conn.execute(
+                    text(
+                        """
+                        UPDATE permissions
+                        SET name = :name,
+                            description = :description
+                        WHERE code = :code
+                        """
+                    ),
+                    permission,
+                )
+
+    logger.info("Базовые permissions синхронизированы")
+
+
+async def seed_role_permissions(eng: AsyncEngine) -> None:
+    if not await table_exists(eng, "role_permissions") or not await table_exists(eng, "permissions"):
+        logger.warning("Таблицы role_permissions/permissions не существуют, пропускаю заполнение")
+        return
+
+    async with eng.begin() as conn:
+        permissions_result = await conn.execute(text("SELECT id, code FROM permissions"))
+        permission_map = {row.code: row.id for row in permissions_result}
+
+        for role_id, permission_codes in INITIAL_ROLE_PERMISSIONS.items():
+            for permission_code in permission_codes:
+                permission_id = permission_map.get(permission_code)
+                if permission_id is None:
+                    continue
+                result = await conn.execute(
+                    text(
+                        """
+                        SELECT 1
+                        FROM role_permissions
+                        WHERE role_id = :role_id
+                          AND permission_id = :permission_id
+                        """
+                    ),
+                    {"role_id": role_id, "permission_id": permission_id},
+                )
+                if result.scalar_one_or_none() is None:
+                    await conn.execute(
+                        text(
+                            """
+                            INSERT INTO role_permissions (role_id, permission_id)
+                            VALUES (:role_id, :permission_id)
+                            """
+                        ),
+                        {"role_id": role_id, "permission_id": permission_id},
+                    )
+
+    logger.info("Базовые назначения permissions ролям синхронизированы")
+
+
 async def init_db() -> None:
     logger.info("Инициализация БД...")
     await wait_for_db(engine)
@@ -237,4 +378,6 @@ async def init_db() -> None:
     await seed_roles_if_empty(engine)
     await seed_ticket_statuses_if_empty(engine)
     await sync_ticket_status_codes(engine)
+    await seed_permissions(engine)
+    await seed_role_permissions(engine)
     logger.info("БД готова")

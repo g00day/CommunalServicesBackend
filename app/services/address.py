@@ -2,15 +2,14 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import ADDRESS_MANAGE, has_permission
 from app.models import Address, District, Street, Uprava, User
 from app.schemas import AddressOut, DistrictOut, StreetOut, UpravaOut
 
-ADMIN_ROLE_IDS = {3, 4}
 
-
-def _ensure_admin(user: User) -> None:
-    if user.role_id not in ADMIN_ROLE_IDS:
-        raise HTTPException(status_code=403, detail="Управление адресами доступно только администратору")
+def _ensure_address_manager(user: User) -> None:
+    if not has_permission(user, ADDRESS_MANAGE):
+        raise HTTPException(status_code=403, detail="Управление адресами требует отдельного права")
 
 
 async def _get_uprava(db: AsyncSession, uprava_id: int) -> Uprava:
@@ -43,7 +42,7 @@ async def get_upravas_service(db: AsyncSession) -> list[UpravaOut]:
 
 
 async def create_uprava_service(db: AsyncSession, name: str, current_user: User) -> UpravaOut:
-    _ensure_admin(current_user)
+    _ensure_address_manager(current_user)
     uprava = Uprava(name=name)
     db.add(uprava)
     await db.commit()
@@ -60,7 +59,7 @@ async def get_districts_service(db: AsyncSession, uprava_id: int | None = None) 
 
 
 async def create_district_service(db: AsyncSession, uprava_id: int, name: str, current_user: User) -> DistrictOut:
-    _ensure_admin(current_user)
+    _ensure_address_manager(current_user)
     await _get_uprava(db, uprava_id)
     district = District(uprava_id=uprava_id, name=name)
     db.add(district)
@@ -78,7 +77,7 @@ async def get_streets_service(db: AsyncSession, district_id: int | None = None) 
 
 
 async def create_street_service(db: AsyncSession, district_id: int, name: str, current_user: User) -> StreetOut:
-    _ensure_admin(current_user)
+    _ensure_address_manager(current_user)
     await _get_district(db, district_id)
     street = Street(district_id=district_id, name=name)
     db.add(street)
@@ -101,7 +100,7 @@ async def create_address_service(
     house_number: str,
     current_user: User,
 ) -> AddressOut:
-    _ensure_admin(current_user)
+    _ensure_address_manager(current_user)
     await _get_street(db, street_id)
     address = Address(street_id=street_id, house_number=house_number)
     db.add(address)

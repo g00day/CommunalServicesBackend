@@ -29,10 +29,15 @@ class User(Base):
     tickets = relationship("Ticket", back_populates="creator")
     chat_participations = relationship("ChatParticipant", back_populates="user")
 
-
     @property
     def full_name(self) -> str:
         parts = [self.surname, self.name]
         if self.father_name:
             parts.append(self.father_name)
         return " ".join(parts)
+
+    @property
+    def permission_codes(self) -> set[str]:
+        if not self.role:
+            return set()
+        return {permission.code for permission in self.role.permissions}

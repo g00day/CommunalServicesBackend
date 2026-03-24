@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import CHAT_PARTICIPANTS_MANAGE, TICKETS_READ_ALL, has_permission
 from app.core.storage import generate_download_url, upload_file_to_storage
 from app.models import Chat, ChatParticipant, Message, MessageFile, Ticket, TicketFile, User
 from app.schemas import (
@@ -13,11 +14,9 @@ from app.schemas import (
     WebhookMessageOut,
 )
 
-STAFF_ROLE_IDS = {2, 3, 4}
-
 
 def _is_staff(user: User) -> bool:
-    return user.role_id in STAFF_ROLE_IDS
+    return has_permission(user, TICKETS_READ_ALL) or has_permission(user, CHAT_PARTICIPANTS_MANAGE)
 
 
 async def _get_ticket(db: AsyncSession, ticket_id: int) -> Ticket:
@@ -29,7 +28,7 @@ async def _get_ticket(db: AsyncSession, ticket_id: int) -> Ticket:
 
 
 def _can_access_ticket(user: User, ticket: Ticket) -> bool:
-    return _is_staff(user) or ticket.user_id == user.id
+    return has_permission(user, TICKETS_READ_ALL) or ticket.user_id == user.id
 
 
 async def _get_chat_by_ticket(db: AsyncSession, ticket_id: int) -> Chat:
@@ -204,8 +203,8 @@ async def add_chat_participant_service(
     role_in_chat: str | None,
     current_user: User,
 ) -> ChatParticipantOut:
-    if not _is_staff(current_user):
-        raise HTTPException(status_code=403, detail="Добавлять участников чата может только сотрудник")
+    if not has_permission(current_user, CHAT_PARTICIPANTS_MANAGE):
+        raise HTTPException(status_code=403, detail="Добавлять участников чата может только сотрудник с соответствующим правом")
 
     _, chat = await _get_ticket_and_chat(db, ticket_id)
 

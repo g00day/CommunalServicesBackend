@@ -5,9 +5,11 @@ from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.mail import send_confirmation_email, send_password_reset_email
+from app.core.permissions import USERS_CREATE, require_permission
 from app.core.security import (
     create_access_token,
     create_email_confirm_token,
@@ -16,17 +18,11 @@ from app.core.security import (
     decode_email_confirm_token,
     decode_password_reset_token,
     hash_password,
-    verify_password,
+    verify_password
 )
 from app.models import Role, TelegramLinkCode, User
 
 DEFAULT_ROLE_ID = 1
-ADMIN_ROLE_IDS = {3, 4}
-
-
-def _ensure_admin(user: User) -> None:
-    if user.role_id not in ADMIN_ROLE_IDS:
-        raise HTTPException(status_code=403, detail="Эндпоинт доступен только администратору")
 
 
 async def _ensure_role_exists(db: AsyncSession, role_id: int) -> Role:
@@ -81,7 +77,11 @@ async def create_user_by_admin(
     position: str | None = None,
     tg_chat_id: int | None = None,
 ) -> User:
-    _ensure_admin(current_user)
+    require_permission(
+        current_user,
+        USERS_CREATE,
+        detail="Создание пользователей доступно только сотруднику с соответствующим правом",
+    )
     await _ensure_role_exists(db, role_id)
 
     existing = await db.execute(select(User).where(User.email == email))
@@ -157,7 +157,11 @@ async def confirm_password_reset(
 
 
 async def authenticate(db: AsyncSession, email: str, password: str) -> User:
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.role).selectinload(Role.permissions))
+        .where(User.email == email)
+    )
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(password, user.hash_pass):
@@ -191,7 +195,11 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str) -> dict:
     except (JWTError, KeyError, ValueError):
         raise exc
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.role).selectinload(Role.permissions))
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
     if not user or not user.is_activated:
         raise exc

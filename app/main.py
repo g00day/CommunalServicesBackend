@@ -3,8 +3,22 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
+from sqladmin import Admin
+from starlette.middleware.sessions import SessionMiddleware
 
+from app.admin.auth import AdminAuth
+from app.admin.views import (
+    AddressAdmin,
+    DistrictAdmin,
+    PermissionAdmin,
+    RoleAdmin,
+    StreetAdmin,
+    TicketAdmin,
+    UpravaAdmin,
+    UserAdmin,
+)
 from app.core.config import settings
+from app.core.database import engine
 from app.core.db_init import init_db
 from app.routers import (
     address,
@@ -35,6 +49,8 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET)
 
 
 def custom_openapi():
@@ -69,3 +85,15 @@ app.include_router(chat_webhook.router, prefix="/api")
 app.include_router(ticket_admin.router, prefix="/api")
 app.include_router(address.router, prefix="/api")
 app.include_router(report.router, prefix="/api")
+
+authentication_backend = AdminAuth(secret_key=settings.JWT_SECRET)
+admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend)
+
+admin.add_view(UserAdmin)
+admin.add_view(TicketAdmin)
+admin.add_view(RoleAdmin)
+admin.add_view(PermissionAdmin)
+admin.add_view(AddressAdmin)
+admin.add_view(UpravaAdmin)
+admin.add_view(DistrictAdmin)
+admin.add_view(StreetAdmin)

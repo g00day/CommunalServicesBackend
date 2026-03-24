@@ -4,10 +4,9 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import REPORTS_READ, has_permission
 from app.models import Ticket, User
 from app.schemas import TicketAddressStatOut, TicketReportOut, TicketStatusStatOut
-
-STAFF_ROLE_IDS = {2, 3, 4}
 
 
 async def get_ticket_report_service(
@@ -16,8 +15,8 @@ async def get_ticket_report_service(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
 ) -> TicketReportOut:
-    if current_user.role_id not in STAFF_ROLE_IDS:
-        raise HTTPException(status_code=403, detail="Отчёты доступны только сотрудникам")
+    if not has_permission(current_user, REPORTS_READ):
+        raise HTTPException(status_code=403, detail="Отчеты доступны только сотруднику с соответствующим правом")
 
     query = select(Ticket).order_by(Ticket.opened_at.desc())
     if date_from is not None:

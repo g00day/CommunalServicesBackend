@@ -12,7 +12,9 @@ from app.models.chat import Chat
 from app.models.chat_participants import ChatParticipant
 from app.models.message import Message
 from app.models.message_file import MessageFile
+from app.models.permission import Permission
 from app.models.telegram_link_code import TelegramLinkCode
+from app.models.role_permission import RolePermission
 
 __all__ = [
     "Address",
@@ -22,7 +24,9 @@ __all__ = [
     "District",
     "Message",
     "MessageFile",
+    "Permission",
     "Role",
+    "RolePermission",
     "Street",
     "TelegramLinkCode",
     "Ticket",

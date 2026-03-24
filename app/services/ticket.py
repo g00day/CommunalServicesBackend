@@ -1,31 +1,35 @@
 from datetime import datetime
 
 from fastapi import HTTPException
-from fastapi.responses import JSONResponse
-from sqlalchemy import JSON, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import (
+    TICKETS_READ_ALL,
+    TICKETS_UPDATE_STATUS,
+    has_any_permission,
+    has_permission,
+)
 from app.models import Address, Chat, ChatParticipant, Ticket, TicketStatus, User
 from app.schemas import TicketListItem, TicketOut, TicketStatusOut
 
 CREATED_STATUS_CODE = "created"
 CLOSED_STATUS_CODE = "closed"
-STAFF_ROLE_IDS = {2, 3, 4}
-ADMIN_ROLE_IDS = {3, 4}
 FINAL_STATUS_CODES = {"completed", "closed", "rejected"}
+STAFF_TICKET_PERMISSIONS = (TICKETS_READ_ALL, TICKETS_UPDATE_STATUS)
 
 
 def _is_staff(user: User) -> bool:
-    return user.role_id in STAFF_ROLE_IDS
+    return has_any_permission(user, *STAFF_TICKET_PERMISSIONS)
 
 
 def _can_access_ticket(user: User, ticket: Ticket) -> bool:
-    return _is_staff(user) or ticket.user_id == user.id
+    return has_permission(user, TICKETS_READ_ALL) or ticket.user_id == user.id
 
 
-def _ensure_admin(user: User) -> None:
-    if user.role_id not in ADMIN_ROLE_IDS:
-        raise HTTPException(status_code=403, detail="Эндпоинт доступен только администратору")
+def _ensure_ticket_read_all(user: User) -> None:
+    if not has_permission(user, TICKETS_READ_ALL):
+        raise HTTPException(status_code=403, detail="Просмотр всех заявок требует отдельного права")
 
 
 async def _get_status_by_code(db: AsyncSession, code: str) -> TicketStatus:
@@ -144,7 +148,7 @@ async def get_tickets_service(db: AsyncSession, current_user: User) -> list[Tick
 
 
 async def get_all_tickets_admin_service(db: AsyncSession, current_user: User) -> list[TicketListItem]:
-    _ensure_admin(current_user)
+    _ensure_ticket_read_all(current_user)
 
     result = await db.execute(select(Ticket).order_by(Ticket.opened_at.desc()))
     tickets = result.scalars().all()
@@ -152,7 +156,7 @@ async def get_all_tickets_admin_service(db: AsyncSession, current_user: User) ->
 
 
 async def get_ticket_admin_service(db: AsyncSession, ticket_id: int, current_user: User) -> TicketOut:
-    _ensure_admin(current_user)
+    _ensure_ticket_read_all(current_user)
 
     ticket = await _get_ticket_by_id(db, ticket_id)
     return _build_ticket_out(ticket)
@@ -172,8 +176,8 @@ async def update_ticket_status_service(
     status_code: str,
     current_user: User,
 ) -> TicketOut:
-    if not _is_staff(current_user):
-        raise HTTPException(status_code=403, detail="Изменять статус заявки может только сотрудник")
+    if not has_permission(current_user, TICKETS_UPDATE_STATUS):
+        raise HTTPException(status_code=403, detail="Изменять статус заявки может только сотрудник с соответствующим правом")
 
     status_code = status_code.lower()
     ticket = await _get_ticket_by_id(db, ticket_id)
