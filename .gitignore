@@ -3,3 +3,9 @@ __pycache__/
 .venv/
 .env
 sql/
+
+ml/artifacts/
+ml/data/generated/ 
+ml/models/ 
+
+

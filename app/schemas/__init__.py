@@ -1,3 +1,9 @@
+from app.schemas.ai import (
+    ForecastAddressOut,
+    ForecastNextTicketOut,
+    ForecastOptionOut,
+    MlStatusOut,
+)
 from app.schemas.address import (
     AddressCreate,
     AddressOut,
@@ -34,6 +40,10 @@ from app.schemas.ticket import TicketCreate, TicketListItem, TicketOut, TicketSt
 from app.schemas.user import UserOut
 
 __all__ = [
+    "ForecastAddressOut",
+    "ForecastNextTicketOut",
+    "ForecastOptionOut",
+    "MlStatusOut",
     "AddressCreate",
     "AddressOut",
     "AdminCreateUserRequest",

@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.core.database import engine
 from app.core.db_init import init_db
 from app.routers import (
+    ai,
     address,
     auth,
     chat_webhook,
@@ -93,6 +94,7 @@ app.include_router(chat_webhook.router, prefix="/api")
 app.include_router(ticket_admin.router, prefix="/api")
 app.include_router(address.router, prefix="/api")
 app.include_router(report.router, prefix="/api")
+app.include_router(ai.router, prefix="/api")
 
 authentication_backend = AdminAuth(secret_key=settings.JWT_SECRET)
 admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend)

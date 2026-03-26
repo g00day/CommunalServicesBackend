@@ -27,8 +27,11 @@ services:
     env_file:
       - .env
     environment:
-      # Внутри Docker хост БД — имя сервиса "db"
       POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - ./ml/models:/app/ml/models
+      - ./ml/artifacts:/app/ml/artifacts
+      - ./ml/data/generated:/app/ml/data/generated
     ports:
       - "8000:8000"
     depends_on:
