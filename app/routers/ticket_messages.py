@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, File as FastAPIFile, Form, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +20,7 @@ from app.services.ticket_chat import (
     get_message_files_service,
     get_ticket_files_service,
     get_ticket_messages_service,
+    upload_message_file_service,
 )
 
 
@@ -36,12 +39,12 @@ async def get_ticket_messages(
 @router.post("/{ticket_id}/messages", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
 async def create_message(
     ticket_id: int,
-    text: str | None = Form(default=None),
-    files: list[UploadFile] = FastAPIFile(default=[]),
+    text: Annotated[str | None, Form()] = None,
+    files: Annotated[list[UploadFile] | None, FastAPIFile()] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return await create_message_service(db, ticket_id, text, current_user, files)
+    return await create_message_service(db, ticket_id, text, current_user, files or [])
 
 
 @router.get("/{ticket_id}/participants", response_model=list[ChatParticipantOut])
@@ -87,3 +90,17 @@ async def get_message_files(
 ):
     return await get_message_files_service(db, ticket_id, message_id, current_user)
 
+
+@router.post(
+    "/{ticket_id}/messages/{message_id}/file",
+    response_model=MessageFileOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_message_file(
+    ticket_id: int,
+    message_id: int,
+    file: UploadFile = FastAPIFile(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await upload_message_file_service(db, ticket_id, message_id, file, current_user)

@@ -363,6 +363,26 @@ async def add_message_file_service(
     )
 
 
+async def upload_message_file_service(
+    db: AsyncSession,
+    ticket_id: int,
+    message_id: int,
+    upload_file: UploadFile,
+    current_user: User,
+) -> MessageFileOut:
+    await _get_message_for_ticket(db, ticket_id, message_id)
+    object_key, _ = await upload_file_to_storage(upload_file, "messages", message_id)
+    return await add_message_file_service(
+        db=db,
+        ticket_id=ticket_id,
+        message_id=message_id,
+        file_url=object_key,
+        file_name=upload_file.filename or "file",
+        mime_type=upload_file.content_type,
+        current_user=current_user,
+    )
+
+
 async def create_message_from_webhook_service(
     db: AsyncSession,
     ticket_id: int,
@@ -414,4 +434,3 @@ async def create_message_from_webhook_service(
     await db.commit()
     message = await _get_message(db, message.id)
     return WebhookMessageOut(status="принято", message=await _build_message_out_with_download_urls(message))
-

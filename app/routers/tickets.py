@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File as FastAPIFile, Form, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,10 +23,10 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 async def create_ticket(
     background_tasks: BackgroundTasks,
-    title: str = Form(...),
-    address_id: int = Form(...),
-    description: str | None = Form(default=None),
-    files: list[UploadFile] = FastAPIFile(default=[]),
+    title: Annotated[str, Form(...)],
+    address_id: Annotated[int, Form(...)],
+    description: Annotated[str | None, Form()] = None,
+    files: Annotated[list[UploadFile] | None, FastAPIFile()] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -34,7 +36,7 @@ async def create_ticket(
         title,
         address_id,
         description,
-        files,
+        files or [],
     )
     if register_new_ticket_for_retraining():
         background_tasks.add_task(run_retraining_pipeline)
