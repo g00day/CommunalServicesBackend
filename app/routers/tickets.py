@@ -1,10 +1,10 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File as FastAPIFile, Form, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas import TicketCreate, TicketListItem, TicketOut, TicketStatusUpdate
+from app.schemas import TicketListItem, TicketOut, TicketStatusUpdate
 from app.services.ml_retraining import register_new_ticket_for_retraining, run_retraining_pipeline
 from app.services.ticket import (
     close_own_ticket_service,
@@ -20,17 +20,21 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 async def create_ticket(
-    payload: TicketCreate,
     background_tasks: BackgroundTasks,
+    title: str = Form(...),
+    address_id: int = Form(...),
+    description: str | None = Form(default=None),
+    files: list[UploadFile] = FastAPIFile(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     ticket = await create_ticket_service(
         db,
         current_user,
-        payload.title,
-        payload.address_id,
-        payload.description,
+        title,
+        address_id,
+        description,
+        files,
     )
     if register_new_ticket_for_retraining():
         background_tasks.add_task(run_retraining_pipeline)

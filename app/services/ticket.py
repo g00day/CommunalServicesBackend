@@ -1,16 +1,17 @@
 from datetime import datetime
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.storage import upload_file_to_storage
 from app.core.permissions import (
     TICKETS_READ_ALL,
     TICKETS_UPDATE_STATUS,
     has_any_permission,
     has_permission,
 )
-from app.models import Address, Chat, ChatParticipant, Ticket, TicketStatus, User
+from app.models import Address, Chat, ChatParticipant, Ticket, TicketFile, TicketStatus, User
 from app.schemas import TicketListItem, TicketOut, TicketStatusOut
 
 CREATED_STATUS_CODE = "created"
@@ -98,6 +99,7 @@ async def create_ticket_service(
     title: str,
     address_id: int,
     description: str | None = None,
+    files: list[UploadFile] | None = None,
 ) -> TicketOut:
     await _ensure_address_exists(db, address_id)
     created_status = await _get_status_by_code(db, CREATED_STATUS_CODE)
@@ -123,6 +125,19 @@ async def create_ticket_service(
             role_in_chat="creator",
         )
     )
+
+    for upload_file in files or []:
+        object_key, _ = await upload_file_to_storage(upload_file, "tickets", ticket.id)
+        db.add(
+            TicketFile(
+                ticket_id=ticket.id,
+                original_name=upload_file.filename or "file",
+                file_path=object_key,
+                file_url=object_key,
+                file_name=upload_file.filename or "file",
+                mime_type=upload_file.content_type,
+            )
+        )
 
     await db.commit()
     ticket = await _get_ticket_by_id(db, ticket.id)

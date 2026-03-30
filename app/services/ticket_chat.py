@@ -1,4 +1,4 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -155,6 +155,7 @@ async def create_message_service(
     ticket_id: int,
     text: str | None,
     current_user: User,
+    files: list[UploadFile] | None = None,
 ) -> MessageOut:
     if text is None or not text.strip():
         raise HTTPException(status_code=400, detail="Сообщение не может быть пустым")
@@ -167,6 +168,22 @@ async def create_message_service(
 
     message = Message(chat_id=chat.id, sender_user_id=current_user.id, text=text.strip())
     db.add(message)
+
+    await db.flush()
+
+    for upload_file in files or []:
+        object_key, _ = await upload_file_to_storage(upload_file, "messages", message.id)
+        db.add(
+            MessageFile(
+                message_id=message.id,
+                original_name=upload_file.filename or "file",
+                file_path=object_key,
+                file_url=object_key,
+                file_name=upload_file.filename or "file",
+                mime_type=upload_file.content_type,
+            )
+        )
+
     await db.commit()
     await db.refresh(message)
 
@@ -398,39 +415,3 @@ async def create_message_from_webhook_service(
     message = await _get_message(db, message.id)
     return WebhookMessageOut(status="принято", message=await _build_message_out_with_download_urls(message))
 
-
-async def upload_ticket_file_service(
-    db: AsyncSession,
-    ticket_id: int,
-    upload_file,
-    current_user: User,
-) -> TicketFileOut:
-    object_key, file_url = await upload_file_to_storage(upload_file, "tickets", ticket_id)
-    return await add_ticket_file_service(
-        db=db,
-        ticket_id=ticket_id,
-        file_url=object_key,
-        file_name=upload_file.filename or "file",
-        mime_type=upload_file.content_type,
-        current_user=current_user,
-    )
-
-
-async def upload_message_file_service(
-    db: AsyncSession,
-    ticket_id: int,
-    message_id: int,
-    upload_file,
-    current_user: User,
-) -> MessageFileOut:
-    await _get_message_for_ticket(db, ticket_id, message_id)
-    object_key, file_url = await upload_file_to_storage(upload_file, "messages", message_id)
-    return await add_message_file_service(
-        db=db,
-        ticket_id=ticket_id,
-        message_id=message_id,
-        file_url=object_key,
-        file_name=upload_file.filename or "file",
-        mime_type=upload_file.content_type,
-        current_user=current_user,
-    )
