@@ -5,7 +5,6 @@ from starlette.requests import Request
 from app.core.permissions import (
     ADDRESS_MANAGE,
     ADMIN_ACCESS,
-    ROLES_MANAGE,
     ROLES_READ,
     TICKETS_DELETE,
     TICKETS_READ_ALL,
@@ -17,6 +16,7 @@ from app.core.permissions import (
 )
 from app.models import (
     Address,
+    AuditLog,
     Chat,
     ChatParticipant,
     District,
@@ -33,6 +33,7 @@ from app.models import (
     Uprava,
     User,
 )
+from app.services.audit import write_audit_log
 
 
 class RBACModelView(ModelView):
@@ -50,6 +51,42 @@ class RBACModelView(ModelView):
             return True
         return permission_code in self._permission_codes(request)
 
+    def _current_admin_user(self, request: Request) -> User | None:
+        admin_user = getattr(request.state, "admin_user", None)
+        if admin_user is not None:
+            return admin_user
+
+        admin_user_id = request.session.get("admin_user_id")
+        admin_email = request.session.get("admin_email")
+        if admin_user_id is None and admin_email is None:
+            return None
+
+        return User(
+            id=admin_user_id or 0,
+            email=admin_email or "",
+            name="",
+            surname="",
+            hash_pass="",
+            role_id=0,
+            is_activated=True,
+        )
+
+    async def _log_action(
+        self,
+        request: Request,
+        action_type: str,
+        *,
+        entity_id: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        await write_audit_log(
+            action_type=action_type,
+            user=self._current_admin_user(request),
+            entity_type=self.model.__name__,
+            entity_id=entity_id,
+            details=details,
+        )
+
     def is_accessible(self, request: Request) -> bool:
         return self._has_permission(request, self.required_permission)
 
@@ -59,17 +96,34 @@ class RBACModelView(ModelView):
     async def insert_model(self, request: Request, data: dict):
         if not self._has_permission(request, self.create_permission):
             raise HTTPException(status_code=403, detail="Недостаточно прав для создания записей")
-        return await super().insert_model(request, data)
+        result = await super().insert_model(request, data)
+        entity_id = getattr(result, "id", None)
+        await self._log_action(
+            request,
+            "ADMIN_CREATE",
+            entity_id=str(entity_id) if entity_id is not None else None,
+            details={"fields": sorted(data.keys())},
+        )
+        return result
 
     async def update_model(self, request: Request, pk: str, data: dict):
         if not self._has_permission(request, self.edit_permission):
             raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования записей")
-        return await super().update_model(request, pk, data)
+        result = await super().update_model(request, pk, data)
+        await self._log_action(
+            request,
+            "ADMIN_UPDATE",
+            entity_id=pk,
+            details={"fields": sorted(data.keys())},
+        )
+        return result
 
     async def delete_model(self, request: Request, pk: str):
         if not self._has_permission(request, self.delete_permission):
             raise HTTPException(status_code=403, detail="Недостаточно прав для удаления записей")
-        return await super().delete_model(request, pk)
+        result = await super().delete_model(request, pk)
+        await self._log_action(request, "ADMIN_DELETE", entity_id=pk)
+        return result
 
 
 class ReadOnlyAdmin(RBACModelView):
@@ -288,3 +342,22 @@ class RolePermissionAdmin(ReadOnlyAdmin, model=RolePermission):
 
     column_list = [RolePermission.role_id, RolePermission.permission_id]
     column_sortable_list = [RolePermission.role_id, RolePermission.permission_id]
+
+
+class AuditLogAdmin(ReadOnlyAdmin, model=AuditLog):
+    name = "Audit Logs"
+    name_plural = "Audit Logs"
+    icon = "fa-solid fa-clipboard-list"
+    required_permission = ADMIN_ACCESS
+
+    column_list = [
+        AuditLog.id,
+        AuditLog.created_at,
+        AuditLog.user_email,
+        AuditLog.action_type,
+        AuditLog.entity_type,
+        AuditLog.entity_id,
+        AuditLog.details,
+    ]
+    column_searchable_list = [AuditLog.user_email, AuditLog.action_type, AuditLog.entity_type, AuditLog.details]
+    column_sortable_list = [AuditLog.id, AuditLog.created_at, AuditLog.action_type]

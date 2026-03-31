@@ -6,6 +6,7 @@ from starlette.requests import Request
 from app.core.permissions import ADMIN_ACCESS, has_permission
 from app.core.database import AsyncSessionLocal
 from app.models import Role, User
+from app.services.audit import write_audit_log
 from app.services.auth import authenticate
 
 
@@ -41,9 +42,25 @@ class AdminAuth(AuthenticationBackend):
                     "admin_permissions": _serialize_permissions(user),
                 }
             )
+            await write_audit_log(
+                action_type="ADMIN_LOGIN",
+                user=user,
+                entity_type="AdminSession",
+                entity_id=str(user.id),
+            )
             return True
 
     async def logout(self, request: Request) -> bool:
+        admin_user_id = request.session.get("admin_user_id")
+        admin_email = request.session.get("admin_email")
+        if admin_user_id or admin_email:
+            await write_audit_log(
+                action_type="ADMIN_LOGOUT",
+                user_id=admin_user_id,
+                user_email=admin_email,
+                entity_type="AdminSession",
+                entity_id=str(admin_user_id) if admin_user_id is not None else None,
+            )
         request.session.clear()
         return True
 

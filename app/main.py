@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.admin.auth import AdminAuth
 from app.admin.views import (
     AddressAdmin,
+    AuditLogAdmin,
     ChatAdmin,
     ChatParticipantAdmin,
     DistrictAdmin,
@@ -100,6 +101,7 @@ authentication_backend = AdminAuth(secret_key=settings.JWT_SECRET)
 admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend)
 
 admin.add_view(UserAdmin)
+admin.add_view(AuditLogAdmin)
 admin.add_view(TicketAdmin)
 admin.add_view(AddressAdmin)
 admin.add_view(UpravaAdmin)

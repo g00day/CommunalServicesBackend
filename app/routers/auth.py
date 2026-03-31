@@ -19,6 +19,7 @@ from app.schemas.auth import (
     TokenPair,
 )
 from app.schemas.user import UserOut
+from app.services.audit import write_audit_log
 from app.services.auth import (
     authenticate,
     confirm_email,
@@ -74,6 +75,14 @@ async def reset_password_confirm_route(payload: PasswordResetConfirm, db: AsyncS
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Вход. Возвращает access + refresh токены. 403 если email не подтвержден."""
     user = await authenticate(db, payload.email, payload.password)
+    await write_audit_log(
+        action_type="USER_LOGIN",
+        user=user,
+        entity_type="AuthSession",
+        entity_id=str(user.id),
+        db=db,
+        commit=True,
+    )
     return issue_tokens(user)
 
 
@@ -84,8 +93,14 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(_: User = Depends(get_current_user)):
+async def logout(current_user: User = Depends(get_current_user)):
     """Stateless logout - клиент удаляет токены у себя."""
+    await write_audit_log(
+        action_type="USER_LOGOUT",
+        user=current_user,
+        entity_type="AuthSession",
+        entity_id=str(current_user.id),
+    )
     return
 
 

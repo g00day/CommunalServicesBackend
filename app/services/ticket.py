@@ -12,6 +12,7 @@ from app.core.permissions import (
     has_permission,
 )
 from app.models import Address, Chat, ChatParticipant, Ticket, TicketFile, TicketStatus, User
+from app.services.audit import write_audit_log
 from app.schemas import TicketListItem, TicketOut, TicketStatusOut
 
 CREATED_STATUS_CODE = "created"
@@ -139,6 +140,15 @@ async def create_ticket_service(
             )
         )
 
+    await write_audit_log(
+        action_type="TICKET_CREATE",
+        user=current_user,
+        entity_type="Ticket",
+        entity_id=str(ticket.id),
+        details={"address_id": address_id, "title": title},
+        db=db,
+    )
+
     await db.commit()
     ticket = await _get_ticket_by_id(db, ticket.id)
     return _build_ticket_out(ticket)
@@ -205,6 +215,15 @@ async def update_ticket_status_service(
     if not ticket.is_closed:
         ticket.closed_at = None
 
+    await write_audit_log(
+        action_type="TICKET_STATUS_UPDATE",
+        user=current_user,
+        entity_type="Ticket",
+        entity_id=str(ticket.id),
+        details={"status_code": status_code},
+        db=db,
+    )
+
     await db.commit()
     ticket = await _get_ticket_by_id(db, ticket.id)
     return _build_ticket_out(ticket)
@@ -219,6 +238,14 @@ async def close_own_ticket_service(db: AsyncSession, ticket_id: int, current_use
     ticket.status_id = closed_status.id
     ticket.is_closed = True
     ticket.closed_at = datetime.utcnow()
+    await write_audit_log(
+        action_type="TICKET_CLOSE",
+        user=current_user,
+        entity_type="Ticket",
+        entity_id=str(ticket.id),
+        details={"status_code": CLOSED_STATUS_CODE},
+        db=db,
+    )
     await db.commit()
 
     ticket = await _get_ticket_by_id(db, ticket.id)
