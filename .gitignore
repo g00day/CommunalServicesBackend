@@ -10,3 +10,5 @@ ml/models/
 
 
 EXAM_PREP.md
+backups/*.dump
+backups/*.sql
