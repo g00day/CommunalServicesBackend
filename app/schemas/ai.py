@@ -38,7 +38,7 @@ class ForecastNextTicketOut(BaseModel):
     season: str
     month: int
     hour: int
+    summary: str
     predicted_reason: str
     reason_confidence: float
     predicted_address: ForecastAddressOut
-    top_predictions: list[ForecastOptionOut]

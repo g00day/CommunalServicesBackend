@@ -17,6 +17,20 @@ def _infer_season(month: int) -> str:
     return "autumn"
 
 
+def _reason_label(reason_code: str) -> str:
+    labels = {
+        "water_leak": "протечка воды",
+        "heating": "проблема с отоплением",
+        "electricity": "проблема с электричеством",
+        "garbage": "вывоз мусора",
+        "sewer": "проблема с канализацией",
+        "elevator": "неисправность лифта",
+        "roof": "проблема с кровлей",
+        "yard": "проблема с дворовой территорией",
+    }
+    return labels.get(reason_code, reason_code)
+
+
 def forecast_next_ticket_service() -> ForecastNextTicketOut:
     now = datetime.utcnow()
     month = now.month
@@ -55,14 +69,19 @@ def forecast_next_ticket_service() -> ForecastNextTicketOut:
 
     top_predictions.sort(key=lambda item: item.combined_score, reverse=True)
     best = top_predictions[0]
+    summary = (
+        f"Вероятнее всего следующая заявка поступит с адреса "
+        f"ул. {best.address.street}, {best.address.house_number}. "
+        f"Возможная причина: {_reason_label(best.reason)}."
+    )
 
     return ForecastNextTicketOut(
         generated_at=now,
         season=season,
         month=month,
         hour=hour,
+        summary=summary,
         predicted_reason=best.reason,
         reason_confidence=best.reason_probability,
         predicted_address=best.address,
-        top_predictions=top_predictions[:5],
     )
