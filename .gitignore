@@ -8,7 +8,5 @@ ml/artifacts/
 ml/data/generated/ 
 ml/models/ 
 
-
-EXAM_PREP.md
 backups/*.dump
 backups/*.sql

@@ -22,7 +22,7 @@ from app.core.security import (
 )
 from app.models import Role, TelegramLinkCode, User
 
-DEFAULT_ROLE_ID = 1
+DEFAULT_ROLE_ID = 1  # может в .env вынести? 
 
 
 async def _ensure_role_exists(db: AsyncSession, role_id: int) -> Role:
