@@ -55,6 +55,7 @@ async def get_ticket(
     ticket_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),):
+    
     return await get_ticket_service(db, ticket_id, current_user)
 
 

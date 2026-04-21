@@ -48,7 +48,6 @@ class PredictionResult:
 def _normalize_dataset(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # Excel edits sometimes duplicate the header row inside the file.
     df = df[df["title"] != "title"]
     df = df[df[TARGET_COLUMN] != TARGET_COLUMN]
 

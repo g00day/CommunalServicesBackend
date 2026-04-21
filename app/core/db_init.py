@@ -152,9 +152,13 @@ async def create_tables_if_not_exist(eng: AsyncEngine) -> None:
         return
 
     async with eng.begin() as conn:
-        for table_name in missing_tables:
-            table = Base.metadata.tables[table_name]
-            await conn.run_sync(lambda sync_conn, t=table: t.create(sync_conn, checkfirst=True))
+        await conn.run_sync(
+            lambda sync_conn: Base.metadata.create_all(
+                sync_conn,
+                tables=[Base.metadata.tables[name] for name in missing_tables],
+                checkfirst=True,
+            )
+        )
 
     logger.info("Созданы отсутствующие таблицы: %s", ", ".join(missing_tables))
 

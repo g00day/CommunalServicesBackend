@@ -8,7 +8,6 @@ from app.schemas.file import TicketFileOut
 class TicketCreate(BaseModel):
     title: str = Field(min_length=5, max_length=200)
     description: str | None = Field(default=None, min_length=10, max_length=1000)
-    # Пока логика адресов не реализована, поле оставляем в запросе как задел под будущую БД адресов.
     address_id: int
 
 

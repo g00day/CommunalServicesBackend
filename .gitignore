@@ -10,3 +10,5 @@ ml/models/
 
 backups/*.dump
 backups/*.sql
+
+backend.tar

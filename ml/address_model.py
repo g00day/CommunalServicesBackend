@@ -69,6 +69,7 @@ def _normalize_dataset(df: pd.DataFrame) -> pd.DataFrame:
         & (df["house_number"] != "")
     ]
     df["address_id"] = df["address_id"].astype(int)
+    print(df.reset_index(drop=True))
     return df.reset_index(drop=True)
 
 
