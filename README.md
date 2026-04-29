@@ -8,7 +8,7 @@
 APP_NAME=zhkh-dispatcher-api
 APP_ENV=dev
 DEBUG=True
-APP_BASE_URL=http://localhost:8000
+APP_BASE_URL=
 
 # Security (auth)
 JWT_SECRET=
@@ -34,7 +34,7 @@ MAIL_SERVER=smtp.gmail.com
 MAIL_PORT=465
 MAIL_SSL=True
 MAIL_TLS=False
-APP_BASE_URL=http://localhost:8000
+APP_BASE_URL=https://hyt4.sandbox.uktlab.ru
 
 # S3 хранилище для файлов
 S3_ENDPOINT_URL=https://storage.yandexcloud.net
@@ -55,5 +55,5 @@ S3_PUBLIC_BASE_URL=
  ```
  docker compose up --build
  ```
- - 4 Открыть документацию по ссылке: http://localhost:8000/docs
+ - 4 Открыть документацию по ссылке: `https://hyt4.sandbox.uktlab.ru/docs` или `http://localhost:8000/docs` при локальном запуске
 

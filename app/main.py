@@ -27,6 +27,7 @@ from app.admin.views import (
     UserAdmin,
 )
 from app.core.config import settings
+from app.core.address_seed import seed_addresses_if_empty
 from app.core.database import engine
 from app.core.db_init import init_db
 from app.routers import (
@@ -50,6 +51,7 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await seed_addresses_if_empty(engine)
     yield
 
 

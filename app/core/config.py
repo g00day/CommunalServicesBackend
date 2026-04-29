@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +21,9 @@ class Settings(BaseSettings):
     S3_PUBLIC_BASE_URL: str | None = None
     TELEGRAM_LINK_CODE_MINUTES: int = 60
 
-    APP_BASE_URL: str 
+    APP_BASE_URL: str = Field(
+        validation_alias=AliasChoices("APP_BASE_URL", "BASE_URL"),
+    )
 
     # Email
     MAIL_USERNAME: str 
@@ -36,6 +39,14 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator("APP_BASE_URL")
+    @classmethod
+    def normalize_app_base_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        if not normalized:
+            raise ValueError("APP_BASE_URL must not be empty")
+        return normalized
 
 
 settings = Settings()

@@ -91,7 +91,6 @@ INITIAL_ROLE_PERMISSIONS = {
     ],
 }
 
-
 async def wait_for_db(eng: AsyncEngine, retries: int = 15, delay: float = 3.0) -> None:
     for attempt in range(1, retries + 1):
         try:

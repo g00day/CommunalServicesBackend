@@ -15,8 +15,12 @@ _conf = ConnectionConfig(
 _mailer = FastMail(_conf)
 
 
+def _build_app_url(path: str) -> str:
+    return f"{settings.APP_BASE_URL}{path}"
+
+
 async def send_confirmation_email(to_email: str, token: str) -> None:
-    confirm_url = f"{settings.APP_BASE_URL}/api/auth/confirm-email?token={token}"
+    confirm_url = _build_app_url(f"/api/auth/confirm-email?token={token}")
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;">
         <h2 style="color:#2563eb;">Подтверждение email</h2>
@@ -41,7 +45,7 @@ async def send_confirmation_email(to_email: str, token: str) -> None:
     await _mailer.send_message(message)
     
 async def send_password_reset_email(to_email: str, token: str) -> None: 
-    reset_url = f"{settings.APP_BASE_URL}/api/auth/reset-password?token={token}"
+    reset_url = _build_app_url(f"/api/auth/reset-password?token={token}")
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;">
         <h2 style="color:#2563eb;">Сброс пароля</h2>
