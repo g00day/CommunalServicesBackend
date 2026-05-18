@@ -69,18 +69,20 @@ services:
   telegram_bot:
     image: uz3ix/zhkh-bot:v0.0.3
     container_name: zhkh_telegram_bot
-    restart: unless-stopped
-    ports:
-      - "8080:80"
+    env_file:
+      - .env
+    environment:
+      BACKEND_BASE_URL: http://backend:8000/api
     logging:
       driver: syslog
       options:
         mode: non-blocking
         syslog-facility: "local0"
-        tag: "zhkh/frontend"
+        tag: "zhkh/tgbot"
         syslog-address: "tcp://rsyslog-server:514"
     depends_on:
-      - backend    
+      - backend
+    
 volumes:
   postgres_data:
     driver: local
