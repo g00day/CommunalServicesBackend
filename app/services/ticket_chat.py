@@ -13,6 +13,7 @@ from app.schemas import (
     TicketFileOut,
     WebhookMessageOut,
 )
+from app.services.telegram_notify import notify_new_message
 
 
 def _is_staff(user: User) -> bool:
@@ -101,6 +102,7 @@ def _build_message_out(message: Message) -> MessageOut:
         id=message.id,
         chat_id=message.chat_id,
         sender_user_id=message.sender_user_id,
+        sender_name=message.sender.full_name,
         text=message.text,
         sent_at=message.sent_at,
         files=[
@@ -135,6 +137,7 @@ async def _build_message_out_with_download_urls(message: Message) -> MessageOut:
         id=message.id,
         chat_id=message.chat_id,
         sender_user_id=message.sender_user_id,
+        sender_name=message.sender.full_name,
         text=message.text,
         sent_at=message.sent_at,
         files=files,
@@ -188,6 +191,8 @@ async def create_message_service(
     await db.refresh(message)
 
     message = await _get_message(db, message.id)
+    ticket = await _get_ticket(db, ticket_id)
+    await notify_new_message(db, ticket, message)
     return await _build_message_out_with_download_urls(message)
 
 
@@ -433,4 +438,6 @@ async def create_message_from_webhook_service(
 
     await db.commit()
     message = await _get_message(db, message.id)
+    ticket = await _get_ticket(db, ticket_id)
+    await notify_new_message(db, ticket, message)
     return WebhookMessageOut(status="принято", message=await _build_message_out_with_download_urls(message))

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -9,6 +9,14 @@ from app.models import Ticket, User
 from app.schemas import TicketAddressStatOut, TicketReportOut, TicketStatusStatOut
 
 
+def _normalize_filter_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 async def get_ticket_report_service(
     db: AsyncSession,
     current_user: User,
@@ -17,6 +25,9 @@ async def get_ticket_report_service(
 ) -> TicketReportOut:
     if not has_permission(current_user, REPORTS_READ):
         raise HTTPException(status_code=403, detail="Отчеты доступны только сотруднику с соответствующим правом")
+
+    date_from = _normalize_filter_datetime(date_from)
+    date_to = _normalize_filter_datetime(date_to)
 
     query = select(Ticket).order_by(Ticket.opened_at.desc())
     if date_from is not None:

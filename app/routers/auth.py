@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse
+from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -8,6 +10,8 @@ from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.auth import (
     AdminCreateUserRequest,
+    ChangeEmailRequest,
+    ChangePasswordRequest,
     LoginRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
@@ -17,55 +21,92 @@ from app.schemas.auth import (
     TelegramLinkConfirmOut,
     TelegramLinkConfirmRequest,
     TokenPair,
+    UpdateProfileRequest,
 )
 from app.schemas.user import UserOut
 from app.services.audit import write_audit_log
 from app.services.auth import (
     authenticate,
+    change_password,
     confirm_email,
+    confirm_email_change,
     confirm_password_reset,
     confirm_telegram_link_code,
     create_telegram_link_code,
     create_user_by_admin,
+    get_current_user_profile,
     issue_tokens,
     refresh_tokens,
     register_user,
+    request_email_change,
     request_password_reset,
+    update_profile,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    """Регистрация. После успешной регистрации на email придет ссылка для активации."""
-    await register_user( 
+async def register(request: Request, db: AsyncSession = Depends(get_db)):
+    """Регистрация пользователя."""
+    content_type = request.headers.get("content-type", "")
+    avatar: UploadFile | None = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        avatar_candidate = form.get("avatar")
+        if avatar_candidate is not None and hasattr(avatar_candidate, "filename"):
+            avatar = avatar_candidate
+
+        try:
+            payload = RegisterRequest.model_validate(
+                {
+                    "email": form.get("email"),
+                    "password": form.get("password"),
+                    "name": form.get("name"),
+                    "surname": form.get("surname"),
+                    "father_name": form.get("father_name"),
+                }
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    else:
+        try:
+            payload = RegisterRequest.model_validate(await request.json())
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+    await register_user(
         db,
         payload.email,
         payload.password,
         payload.name,
         payload.surname,
         payload.father_name,
+        avatar,
     )
     return {"detail": "Регистрация успешна. Проверьте почту для подтверждения email."}
 
 
 @router.get("/confirm-email", response_class=HTMLResponse)
 async def confirm_email_route(token: str, db: AsyncSession = Depends(get_db)):
-    """Ссылка из письма. Активирует аккаунт и показывает HTML-страницу."""
     user = await confirm_email(db, token)
     return HTMLResponse(content=_success_page(user.full_name))
 
 
 @router.post("/request-password-reset", response_model=dict)
-async def request_password_reset_route( payload: PasswordResetRequest, db: AsyncSession = Depends(get_db),
+async def request_password_reset_route(
+    payload: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
 ):
     await request_password_reset(db, payload.email)
     return {"detail": "Если аккаунт с таким email существует, письмо для сброса пароля отправлено."}
 
 
 @router.post("/reset-password/confirm", response_model=dict)
-async def reset_password_confirm_route(payload: PasswordResetConfirm, db: AsyncSession = Depends(get_db),
+async def reset_password_confirm_route(
+    payload: PasswordResetConfirm,
+    db: AsyncSession = Depends(get_db),
 ):
     await confirm_password_reset(db, payload.token, payload.new_password)
     return {"detail": "Пароль успешно изменен"}
@@ -73,7 +114,6 @@ async def reset_password_confirm_route(payload: PasswordResetConfirm, db: AsyncS
 
 @router.post("/login", response_model=TokenPair)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """Вход. Возвращает access + refresh токены. 403 если email не подтвержден."""
     user = await authenticate(db, payload.email, payload.password)
     await write_audit_log(
         action_type="USER_LOGIN",
@@ -88,13 +128,11 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/refresh", response_model=TokenPair)
 async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    """Обновление пары токенов по refresh_token."""
     return await refresh_tokens(db, payload.refresh_token)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(current_user: User = Depends(get_current_user)):
-    """Stateless logout - клиент удаляет токены у себя."""
     await write_audit_log(
         action_type="USER_LOGOUT",
         user=current_user,
@@ -105,20 +143,81 @@ async def logout(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/me", response_model=UserOut)
-async def me(current_user: User = Depends(get_current_user)):
-    """Профиль текущего пользователя."""
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "name": current_user.name,
-        "surname": current_user.surname,
-        "father_name": current_user.father_name,
-        "full_name": current_user.full_name,
-        "role": current_user.role.name,
-        "is_activated": current_user.is_activated,
-        "uprava_id": current_user.uprava_id,
-        "position": current_user.position,
-    }
+async def me(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await get_current_user_profile(db, current_user)
+
+
+@router.patch("/me", response_model=UserOut)
+async def update_me(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    content_type = request.headers.get("content-type", "")
+    avatar: UploadFile | None = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        avatar_candidate = form.get("avatar")
+        if avatar_candidate is not None and hasattr(avatar_candidate, "filename"):
+            avatar = avatar_candidate
+
+        try:
+            payload = UpdateProfileRequest.model_validate(
+                {
+                    "name": form.get("name"),
+                    "surname": form.get("surname"),
+                    "father_name": form.get("father_name"),
+                    "position": form.get("position"),
+                }
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    else:
+        try:
+            payload = UpdateProfileRequest.model_validate(await request.json())
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+    await update_profile(
+        db=db,
+        current_user=current_user,
+        name=payload.name,
+        surname=payload.surname,
+        father_name=payload.father_name,
+        position=payload.position,
+        avatar=avatar,
+    )
+    return await get_current_user_profile(db, current_user)
+
+
+@router.post("/change-password", response_model=dict)
+async def change_password_route(
+    payload: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await change_password(db, current_user, payload.current_password, payload.new_password)
+    return {"detail": "Пароль успешно изменен"}
+
+
+@router.post("/change-email/request", response_model=dict)
+async def change_email_request_route(
+    payload: ChangeEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await request_email_change(db, current_user, payload.new_email)
+    return {"detail": "Письмо для подтверждения смены email отправлено на текущую почту"}
+
+
+@router.get("/confirm-email-change", response_class=HTMLResponse)
+async def confirm_email_change_route(token: str, db: AsyncSession = Depends(get_db)):
+    user = await confirm_email_change(db, token)
+    return HTMLResponse(content=_email_change_success_page(user.full_name, user.email))
 
 
 @router.post("/admin/create-user", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -181,14 +280,9 @@ async def telegram_link_confirm(
 
 @router.post("/dev/activate", include_in_schema=settings.DEBUG, tags=["dev"])
 async def dev_activate(email: str, db: AsyncSession = Depends(get_db)):
-    """Активирует аккаунт вручную. Виден только при DEBUG=True."""
-    from sqlalchemy import select
-
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if not user:
-        from fastapi import HTTPException
-
         raise HTTPException(404, "Пользователь не найден")
     user.is_activated = True
     await db.commit()
@@ -216,6 +310,32 @@ def _success_page(full_name: str) -> str:
         <h1>Email подтвержден!</h1>
         <p>Добро пожаловать, <strong>{full_name}</strong>.<br>
         Аккаунт активирован. Можете войти в систему.</p>
+    </div>
+</body>
+</html>"""
+
+
+def _email_change_success_page(full_name: str, new_email: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Email изменён</title>
+    <style>
+        body {{ font-family:Arial,sans-serif; display:flex; justify-content:center;
+                align-items:center; min-height:100vh; margin:0; background:#f0f9ff; }}
+        .card {{ background:white; border-radius:12px; padding:40px 48px;
+                 box-shadow:0 4px 24px rgba(0,0,0,.08); text-align:center; max-width:460px; }}
+        h1 {{ color:#16a34a; margin:0 0 8px; font-size:1.5rem; }}
+        p {{ color:#6b7280; margin:0; line-height:1.5; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div style="font-size:48px;margin-bottom:16px">OK</div>
+        <h1>Email успешно изменён!</h1>
+        <p><strong>{full_name}</strong>, теперь для входа используется адрес:<br>
+        <strong>{new_email}</strong></p>
     </div>
 </body>
 </html>"""

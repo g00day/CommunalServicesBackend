@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
@@ -14,11 +14,16 @@ from app.core.storage import generate_download_url, upload_file_to_storage
 from app.models import Address, Chat, ChatParticipant, Ticket, TicketFile, TicketStatus, User
 from app.schemas import TicketListItem, TicketOut, TicketStatusOut
 from app.services.audit import write_audit_log
+from app.services.telegram_notify import notify_ticket_created, notify_ticket_status_changed
 
 CREATED_STATUS_CODE = "created"
 CLOSED_STATUS_CODE = "closed"
 FINAL_STATUS_CODES = {"completed", "closed", "rejected"}
 STAFF_TICKET_PERMISSIONS = (TICKETS_READ_ALL, TICKETS_UPDATE_STATUS)
+
+
+def _utc_now_naive() -> datetime:
+  return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _is_staff(user: User) -> bool:
@@ -47,6 +52,11 @@ async def _get_ticket_by_id(db: AsyncSession, ticket_id: int) -> Ticket:
   ticket = result.scalar_one_or_none()
   if not ticket:
     raise HTTPException(status_code=404, detail="Заявка не найдена")
+  return ticket
+
+
+async def _reload_ticket(db: AsyncSession, ticket: Ticket) -> Ticket:
+  await db.refresh(ticket, attribute_names=["status", "files", "chat"])
   return ticket
 
 
@@ -154,6 +164,7 @@ async def create_ticket_service(
 
   await db.commit()
   ticket = await _get_ticket_by_id(db, ticket.id)
+  await notify_ticket_created(db, ticket)
   return await _build_ticket_out(ticket)
 
 
@@ -214,7 +225,7 @@ async def update_ticket_status_service(
   ticket.status_id = ticket_status.id
   ticket.is_closed = status_code in FINAL_STATUS_CODES
   if ticket.is_closed and ticket.closed_at is None:
-    ticket.closed_at = datetime.utcnow()
+    ticket.closed_at = _utc_now_naive()
   if not ticket.is_closed:
     ticket.closed_at = None
 
@@ -228,7 +239,8 @@ async def update_ticket_status_service(
   )
 
   await db.commit()
-  ticket = await _get_ticket_by_id(db, ticket.id)
+  ticket = await _reload_ticket(db, ticket)
+  await notify_ticket_status_changed(db, ticket, current_user.id)
   return await _build_ticket_out(ticket)
 
 
@@ -240,7 +252,7 @@ async def close_own_ticket_service(db: AsyncSession, ticket_id: int, current_use
   closed_status = await _get_status_by_code(db, CLOSED_STATUS_CODE)
   ticket.status_id = closed_status.id
   ticket.is_closed = True
-  ticket.closed_at = datetime.utcnow()
+  ticket.closed_at = _utc_now_naive()
   await write_audit_log(
     action_type="TICKET_CLOSE",
     user=current_user,
@@ -251,5 +263,6 @@ async def close_own_ticket_service(db: AsyncSession, ticket_id: int, current_use
   )
   await db.commit()
 
-  ticket = await _get_ticket_by_id(db, ticket.id)
+  ticket = await _reload_ticket(db, ticket)
+  await notify_ticket_status_changed(db, ticket, current_user.id)
   return await _build_ticket_out(ticket)

@@ -16,6 +16,8 @@ class User(Base):
 
     hash_pass: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     tg_chat_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     uprava_id: Mapped[int | None] = mapped_column(ForeignKey("uprava.id"), nullable=True)

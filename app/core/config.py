@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_MINUTES: int 
     REFRESH_TOKEN_DAYS: int
     CHAT_WEBHOOK_SECRET: str | None = None
+    TELEGRAM_BOT_INTERNAL_SECRET: str | None = None
+    TELEGRAM_BOT_SERVICE_URL: str | None = None
+    TELEGRAM_BOT_NOTIFY_TIMEOUT_SECONDS: int = 10
 
     POSTGRES_URL: str
     S3_ENDPOINT_URL: str = "https://storage.yandexcloud.net"

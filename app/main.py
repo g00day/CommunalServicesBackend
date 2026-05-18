@@ -3,10 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
-from sqladmin import Admin
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.admin.auth import AdminAuth
+from app.admin.panel import RelativeUrlAdmin
 from app.admin.views import (
     AddressAdmin,
     AuditLogAdmin,
@@ -36,6 +36,7 @@ from app.routers import (
     auth,
     chat_webhook,
     report,
+    telegram_bot,
     ticket_admin,
     ticket_messages,
     ticket_reference,
@@ -76,6 +77,8 @@ def custom_openapi():
         for operation in path.values():
             if "chat-webhook" in operation.get("tags", []):
                 continue
+            if "telegram-bot-internal" in operation.get("tags", []):
+                continue
             operation["security"] = [{"bearerAuth": []}]
     app.openapi_schema = schema
     return schema
@@ -94,13 +97,18 @@ app.include_router(ticket_reference.router, prefix="/api")
 app.include_router(tickets.router, prefix="/api")
 app.include_router(ticket_messages.router, prefix="/api")
 app.include_router(chat_webhook.router, prefix="/api")
+app.include_router(telegram_bot.router, prefix="/api")
 app.include_router(ticket_admin.router, prefix="/api")
 app.include_router(address.router, prefix="/api")
 app.include_router(report.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
 
 authentication_backend = AdminAuth(secret_key=settings.JWT_SECRET)
-admin = Admin(app=app, engine=engine, authentication_backend=authentication_backend)
+admin = RelativeUrlAdmin(
+    app=app,
+    engine=engine,
+    authentication_backend=authentication_backend,
+)
 
 admin.add_view(UserAdmin)
 admin.add_view(AuditLogAdmin)

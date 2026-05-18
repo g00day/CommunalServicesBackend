@@ -1,26 +1,33 @@
 from datetime import datetime, timedelta, timezone
 import secrets
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from jose import JWTError, jwt
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.core.mail import send_confirmation_email, send_password_reset_email
-from app.core.permissions import USERS_CREATE, require_permission
+from app.core.mail import (
+    send_confirmation_email,
+    send_email_change_confirmation_email,
+    send_password_reset_email,
+)
+from app.core.permissions import ADMIN_ACCESS, REPORTS_READ, USERS_CREATE, has_permission, require_permission
 from app.core.security import (
     create_access_token,
+    create_email_change_token,
     create_email_confirm_token,
     create_refresh_token,
     create_reset_password_token,
+    decode_email_change_token,
     decode_email_confirm_token,
     decode_password_reset_token,
     hash_password,
     verify_password
 )
-from app.models import Role, TelegramLinkCode, User
+from app.core.storage import generate_download_url, upload_file_to_storage
+from app.models import Role, TelegramLinkCode, Ticket, TicketStatus, User
 
 DEFAULT_ROLE_ID = 1  # может в .env вынести? 
 
@@ -40,6 +47,7 @@ async def register_user(
     name: str,
     surname: str,
     father_name: str | None = None,
+    avatar: UploadFile | None = None,
 ) -> User:
     existing = await db.execute(select(User).where(User.email == email))
     if existing.scalar_one_or_none():
@@ -55,6 +63,13 @@ async def register_user(
         is_activated=False,
     )
     db.add(user)
+    await db.flush()
+
+    if avatar is not None:
+        object_key, file_url = await upload_file_to_storage(avatar, "avatars", user.id)
+        user.avatar_path = object_key
+        user.avatar_url = file_url
+
     await db.commit()
     await db.refresh(user)
 
@@ -156,6 +171,99 @@ async def confirm_password_reset(
     return user
 
 
+async def change_password(
+    db: AsyncSession,
+    current_user: User,
+    current_password: str,
+    new_password: str,
+) -> User:
+    if not verify_password(current_password, current_user.hash_pass):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Текущий пароль указан неверно",
+        )
+    if verify_password(new_password, current_user.hash_pass):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Новый пароль должен отличаться от текущего",
+        )
+
+    current_user.hash_pass = hash_password(new_password)
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+async def update_profile(
+    db: AsyncSession,
+    current_user: User,
+    name: str | None = None,
+    surname: str | None = None,
+    father_name: str | None = None,
+    position: str | None = None,
+    avatar: UploadFile | None = None,
+) -> User:
+    if name is not None:
+        current_user.name = name
+    if surname is not None:
+        current_user.surname = surname
+    if father_name is not None:
+        current_user.father_name = father_name or None
+    if position is not None:
+        current_user.position = position or None
+
+    if avatar is not None:
+        object_key, file_url = await upload_file_to_storage(avatar, "avatars", current_user.id)
+        current_user.avatar_path = object_key
+        current_user.avatar_url = file_url
+
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+async def request_email_change(
+    db: AsyncSession,
+    current_user: User,
+    new_email: str,
+) -> None:
+    normalized_email = new_email.strip().lower()
+    if normalized_email == current_user.email.lower():
+        raise HTTPException(status_code=400, detail="Укажите новый email, отличный от текущего")
+
+    existing = await db.execute(select(User).where(User.email == normalized_email))
+    existing_user = existing.scalar_one_or_none()
+    if existing_user and existing_user.id != current_user.id:
+        raise HTTPException(status_code=409, detail="Email уже используется")
+
+    token = create_email_change_token(current_user.id, current_user.email, normalized_email)
+    await send_email_change_confirmation_email(current_user.email, normalized_email, token)
+
+
+async def confirm_email_change(db: AsyncSession, token: str) -> User:
+    try:
+        user_id, current_email, new_email = decode_email_change_token(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if user.email.lower() != current_email.lower():
+        raise HTTPException(status_code=400, detail="Текущий email пользователя уже изменён")
+
+    existing = await db.execute(select(User).where(User.email == new_email))
+    existing_user = existing.scalar_one_or_none()
+    if existing_user and existing_user.id != user.id:
+        raise HTTPException(status_code=409, detail="Email уже используется")
+
+    user.email = new_email
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     result = await db.execute(
         select(User)
@@ -179,6 +287,61 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     await db.commit()
     await db.refresh(user)
     return user
+
+
+async def get_current_user_profile(db: AsyncSession, current_user: User) -> dict:
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.role).selectinload(Role.permissions), selectinload(User.uprava))
+        .where(User.id == current_user.id)
+    )
+    current_user = result.scalar_one()
+
+    closed_tickets_query = await db.execute(
+        select(func.count(Ticket.id)).where(
+            Ticket.user_id == current_user.id,
+            Ticket.is_closed.is_(True),
+        )
+    )
+    in_progress_query = await db.execute(
+        select(func.count(Ticket.id))
+        .join(TicketStatus, TicketStatus.id == Ticket.status_id)
+        .where(
+            Ticket.user_id == current_user.id,
+            Ticket.is_closed.is_(False),
+            TicketStatus.code == "in_progress",
+        )
+    )
+
+    avatar_url = None
+    if current_user.avatar_url or current_user.avatar_path:
+        avatar_url = await generate_download_url(
+            file_url=current_user.avatar_url,
+            file_path=current_user.avatar_path,
+        )
+
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "surname": current_user.surname,
+        "father_name": current_user.father_name,
+        "full_name": current_user.full_name,
+        "avatar_url": avatar_url,
+        "role": current_user.role.name,
+        "is_activated": current_user.is_activated,
+        "uprava_id": current_user.uprava_id,
+        "uprava_name": current_user.uprava.name if current_user.uprava else None,
+        "position": current_user.position,
+        "tg_chat_id": current_user.tg_chat_id,
+        "last_login": current_user.last_login,
+        "closed_tickets_count": closed_tickets_query.scalar_one(),
+        "in_progress_tickets_count": in_progress_query.scalar_one(),
+        "permissions": sorted(current_user.permission_codes),
+        "is_admin": has_permission(current_user, ADMIN_ACCESS),
+        "can_view_reports": has_permission(current_user, REPORTS_READ),
+        "can_use_ai": has_permission(current_user, ADMIN_ACCESS),
+    }
 
 
 async def refresh_tokens(db: AsyncSession, refresh_token: str) -> dict:

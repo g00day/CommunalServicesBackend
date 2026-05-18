@@ -25,6 +25,7 @@ class MessageOut(BaseModel):
     id: int
     chat_id: int
     sender_user_id: int
+    sender_name: str
     text: str | None
     sent_at: datetime
     files: list[MessageFileOut] = Field(default_factory=list)

@@ -28,6 +28,7 @@ services:
       - .env
     environment:
       POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      TELEGRAM_BOT_SERVICE_URL: http://telegram_bot:8081
     volumes:
       - ./ml/models:/app/ml/models
       - ./ml/artifacts:/app/ml/artifacts
@@ -37,6 +38,20 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  telegram_bot:
+    build: ../CommunalServicesTGbot
+    container_name: zhkh_telegram_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      BACKEND_BASE_URL: http://backend:8000/api
+      APP_BASE_URL: ${APP_BASE_URL}
+      TELEGRAM_BOT_INTERNAL_SECRET: ${TELEGRAM_BOT_INTERNAL_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

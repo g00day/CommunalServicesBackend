@@ -37,6 +37,14 @@ from app.schemas.chat import (
 from app.schemas.file import FileCreate, MessageFileOut, TicketFileOut
 from app.schemas.report import TicketAddressStatOut, TicketReportOut, TicketStatusStatOut
 from app.schemas.ticket import TicketCreate, TicketListItem, TicketOut, TicketStatusOut, TicketStatusUpdate
+from app.schemas.telegram_bot import (
+    TelegramBotCloseTicketRequest,
+    TelegramBotMessageOut,
+    TelegramBotStatusUpdateRequest,
+    TelegramBotTicketDetailOut,
+    TelegramBotTicketListItemOut,
+    TelegramBotUserOut,
+)
 from app.schemas.user import UserOut
 
 __all__ = [
@@ -74,6 +82,12 @@ __all__ = [
     "TicketStatusOut",
     "TicketStatusStatOut",
     "TicketStatusUpdate",
+    "TelegramBotCloseTicketRequest",
+    "TelegramBotMessageOut",
+    "TelegramBotStatusUpdateRequest",
+    "TelegramBotTicketDetailOut",
+    "TelegramBotTicketListItemOut",
+    "TelegramBotUserOut",
     "TokenPair",
     "UpravaCreate",
     "UpravaOut",

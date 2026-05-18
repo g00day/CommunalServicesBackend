@@ -33,6 +33,22 @@ class PasswordResetConfirm(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=100)
+    surname: str | None = Field(default=None, min_length=2, max_length=100)
+    father_name: str | None = Field(default=None, max_length=100)
+    position: str | None = Field(default=None, max_length=120)
+
+
+class ChangeEmailRequest(BaseModel):
+    new_email: EmailStr
+
+
 class AdminCreateUserRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
