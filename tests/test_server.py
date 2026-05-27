@@ -40,7 +40,10 @@ async def test_server_login_rejects_not_activated_user(client, db_session, test_
 
     response = await client.post(
         "/api/auth/login",
-        json={"email": "inactive@example.com", "password": "Password123!"},
+        json={
+            "email": "inactive@example.com", 
+            "password": "Password123!"
+        },
     )
 
     assert response.status_code == 403
@@ -51,7 +54,10 @@ async def test_server_login_returns_tokens_for_activated_user(client, db_session
 
     response = await client.post(
         "/api/auth/login",
-        json={"email": "active@example.com", "password": "Password123!"},
+        json={
+            "email": "active@example.com",
+            "password": "Password123!"
+        },
     )
 
     assert response.status_code == 200
@@ -77,7 +83,11 @@ async def test_server_create_ticket_returns_created_status(client, db_session, t
     response = await client.post(
         "/api/tickets",
         headers=headers,
-        data={"title": "Прорыв трубы", "description": "Течет стояк", "address_id": str(address_id)},
+        data={
+            "title": "Прорыв трубы",
+            "description": "Течет стояк",
+            "address_id": str(address_id)
+        },
     )
 
     assert response.status_code == 201
