@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.permissions import (
     TICKETS_READ_ALL,
@@ -30,28 +31,41 @@ def _is_staff(user: User) -> bool:
   return has_any_permission(user, *STAFF_TICKET_PERMISSIONS)
 
 
+def _ensure_regular_user_can_create_ticket(user: User) -> None:
+  if _is_staff(user):
+    raise HTTPException(status_code=403, detail="Создавать заявки могут только обычные пользователи")
+
+
 def _can_access_ticket(user: User, ticket: Ticket) -> bool:
   return has_permission(user, TICKETS_READ_ALL) or ticket.user_id == user.id
 
 
 def _ensure_ticket_read_all(user: User) -> None:
   if not has_permission(user, TICKETS_READ_ALL):
-    raise HTTPException(status_code=403, detail="Просмотр всех заявок требует отдельного права")
+    raise HTTPException(status_code=403, detail="Р СџРЎР‚Р С•РЎРѓР СР С•РЎвЂљРЎР‚ Р Р†РЎРѓР ВµРЎвЂ¦ Р В·Р В°РЎРЏР Р†Р С•Р С” РЎвЂљРЎР‚Р ВµР В±РЎС“Р ВµРЎвЂљ Р С•РЎвЂљР Т‘Р ВµР В»РЎРЉР Р…Р С•Р С–Р С• Р С—РЎР‚Р В°Р Р†Р В°")
 
 
 async def _get_status_by_code(db: AsyncSession, code: str) -> TicketStatus:
   result = await db.execute(select(TicketStatus).where(TicketStatus.code == code))
   ticket_status = result.scalar_one_or_none()
   if not ticket_status:
-    raise HTTPException(status_code=404, detail="Статус заявки не найден")
+    raise HTTPException(status_code=404, detail="Р РЋРЎвЂљР В°РЎвЂљРЎС“РЎРѓ Р В·Р В°РЎРЏР Р†Р С”Р С‘ Р Р…Р Вµ Р Р…Р В°Р в„–Р Т‘Р ВµР Р…")
   return ticket_status
 
 
 async def _get_ticket_by_id(db: AsyncSession, ticket_id: int) -> Ticket:
-  result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+  result = await db.execute(
+    select(Ticket)
+    .options(
+      selectinload(Ticket.creator),
+      selectinload(Ticket.status),
+      selectinload(Ticket.files),
+    )
+    .where(Ticket.id == ticket_id)
+  )
   ticket = result.scalar_one_or_none()
   if not ticket:
-    raise HTTPException(status_code=404, detail="Заявка не найдена")
+    raise HTTPException(status_code=404, detail="Р вЂ”Р В°РЎРЏР Р†Р С”Р В° Р Р…Р Вµ Р Р…Р В°Р в„–Р Т‘Р ВµР Р…Р В°")
   return ticket
 
 
@@ -64,7 +78,7 @@ async def _ensure_address_exists(db: AsyncSession, address_id: int) -> Address:
   result = await db.execute(select(Address).where(Address.id == address_id))
   address = result.scalar_one_or_none()
   if not address:
-    raise HTTPException(status_code=400, detail="Адрес не найден")
+    raise HTTPException(status_code=400, detail="Р С’Р Т‘РЎР‚Р ВµРЎРѓ Р Р…Р Вµ Р Р…Р В°Р в„–Р Т‘Р ВµР Р…")
   return address
 
 
@@ -89,6 +103,7 @@ async def _build_ticket_out(ticket: Ticket) -> TicketOut:
     address_id=ticket.address_id,
     status=ticket.status.code,
     user_id=ticket.user_id,
+    creator_name=ticket.creator.full_name if ticket.creator else None,
     opened_at=ticket.opened_at,
     closed_at=ticket.closed_at,
     is_closed=ticket.is_closed,
@@ -115,6 +130,7 @@ async def create_ticket_service(
   description: str | None = None,
   files: list[UploadFile] | None = None,
 ) -> TicketOut:
+  _ensure_regular_user_can_create_ticket(current_user)
   await _ensure_address_exists(db, address_id)
   created_status = await _get_status_by_code(db, CREATED_STATUS_CODE)
 
@@ -175,7 +191,7 @@ async def get_ticket_service(
 ) -> TicketOut:
   ticket = await _get_ticket_by_id(db, ticket_id)
   if not _can_access_ticket(current_user, ticket):
-    raise HTTPException(status_code=403, detail="Нет доступа к этой заявке")
+    raise HTTPException(status_code=403, detail="Р СњР ВµРЎвЂљ Р Т‘Р С•РЎРѓРЎвЂљРЎС“Р С—Р В° Р С” РЎРЊРЎвЂљР С•Р в„– Р В·Р В°РЎРЏР Р†Р С”Р Вµ")
   return await _build_ticket_out(ticket)
 
 
@@ -216,7 +232,7 @@ async def update_ticket_status_service(
   current_user: User,
 ) -> TicketOut:
   if not has_permission(current_user, TICKETS_UPDATE_STATUS):
-    raise HTTPException(status_code=403, detail="Изменять статус заявки может только сотрудник с соответствующим правом")
+    raise HTTPException(status_code=403, detail="Р ВР В·Р СР ВµР Р…РЎРЏРЎвЂљРЎРЉ РЎРѓРЎвЂљР В°РЎвЂљРЎС“РЎРѓ Р В·Р В°РЎРЏР Р†Р С”Р С‘ Р СР С•Р В¶Р ВµРЎвЂљ РЎвЂљР С•Р В»РЎРЉР С”Р С• РЎРѓР С•РЎвЂљРЎР‚РЎС“Р Т‘Р Р…Р С‘Р С” РЎРѓ РЎРѓР С•Р С•РЎвЂљР Р†Р ВµРЎвЂљРЎРѓРЎвЂљР Р†РЎС“РЎР‹РЎвЂ°Р С‘Р С Р С—РЎР‚Р В°Р Р†Р С•Р С")
 
   status_code = status_code.lower()
   ticket = await _get_ticket_by_id(db, ticket_id)
@@ -247,7 +263,7 @@ async def update_ticket_status_service(
 async def close_own_ticket_service(db: AsyncSession, ticket_id: int, current_user: User) -> TicketOut:
   ticket = await _get_ticket_by_id(db, ticket_id)
   if ticket.user_id != current_user.id and not _is_staff(current_user):
-    raise HTTPException(status_code=403, detail="Закрыть можно только свою заявку")
+    raise HTTPException(status_code=403, detail="Р вЂ”Р В°Р С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р СР С•Р В¶Р Р…Р С• РЎвЂљР С•Р В»РЎРЉР С”Р С• РЎРѓР Р†Р С•РЎР‹ Р В·Р В°РЎРЏР Р†Р С”РЎС“")
 
   closed_status = await _get_status_by_code(db, CLOSED_STATUS_CODE)
   ticket.status_id = closed_status.id

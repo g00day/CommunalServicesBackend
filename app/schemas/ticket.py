@@ -22,6 +22,7 @@ class TicketOut(BaseModel):
     address_id: int
     status: str
     user_id: int
+    creator_name: str | None = None
     opened_at: datetime
     closed_at: datetime | None
     is_closed: bool

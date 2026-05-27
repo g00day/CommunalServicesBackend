@@ -1,0 +1,119 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: zhkh_full_test
+      POSTGRES_USER: zhkh_test_user
+      POSTGRES_PASSWORD: zhkh_test_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhkh_test_user -d zhkh_full_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+      pull: true
+    environment:
+      APP_NAME: zhkh-dispatcher-api-full-test
+      DEBUG: "true"
+      JWT_SECRET: test-secret
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_MINUTES: "30"
+      REFRESH_TOKEN_DAYS: "14"
+      CHAT_WEBHOOK_SECRET: test-webhook-secret
+      POSTGRES_URL: postgresql+asyncpg://zhkh_test_user:zhkh_test_password@db:5432/zhkh_full_test
+      APP_BASE_URL: http://frontend
+      MAIL_USERNAME: test@example.com
+      MAIL_PASSWORD: test-password
+      MAIL_FROM: test@example.com
+      MAIL_SERVER: smtp.test.local
+      MAIL_PORT: "1025"
+      MAIL_SSL: "false"
+      MAIL_TLS: "false"
+      S3_BUCKET: test-bucket
+      S3_ACCESS_KEY_ID: test-access-key
+      S3_SECRET_ACCESS_KEY: test-secret-key
+      S3_PUBLIC_BASE_URL: http://files.test.local
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+      pull: true
+    environment:
+      APP_NAME: zhkh-dispatcher-api-tests
+      DEBUG: "true"
+      JWT_SECRET: test-secret
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_MINUTES: "30"
+      REFRESH_TOKEN_DAYS: "14"
+      CHAT_WEBHOOK_SECRET: test-webhook-secret
+      POSTGRES_URL: sqlite+aiosqlite:///./test.db
+      APP_BASE_URL: http://testserver
+      MAIL_USERNAME: test@example.com
+      MAIL_PASSWORD: test-password
+      MAIL_FROM: test@example.com
+      MAIL_SERVER: smtp.test.local
+      MAIL_PORT: "1025"
+      MAIL_SSL: "false"
+      MAIL_TLS: "false"
+      S3_BUCKET: test-bucket
+      S3_ACCESS_KEY_ID: test-access-key
+      S3_SECRET_ACCESS_KEY: test-secret-key
+      S3_PUBLIC_BASE_URL: http://files.test.local
+    command: pytest -vv
+
+  frontend:
+    build:
+      context: ../ComunalServicesFrontend/my-react-app
+      dockerfile: Dockerfile
+      pull: true
+      args:
+        VITE_API_BASE_URL: /api
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+  selenium:
+    image: selenium/standalone-chrome:4.21.0
+    pull_policy: always
+    shm_size: 2gb
+    environment:
+      SE_NODE_MAX_SESSIONS: 1
+      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
+      SE_VNC_NO_PASSWORD: "1"
+    ports:
+      - "4444:4444"
+      - "7900:7900"
+
+  frontend-selenium-tests:
+    build:
+      context: ../ComunalServicesFrontend/selenium-tests
+      dockerfile: Dockerfile
+      pull: true
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+      selenium:
+        condition: service_started
+      backend-tests:
+        condition: service_completed_successfully
+    environment:
+      APP_URL: http://frontend
+      SELENIUM_REMOTE_URL: http://selenium:4444/wd/hub
+      SELENIUM_ACTION_DELAY: ${SELENIUM_ACTION_DELAY:-0.8}
+    command: pytest -vv -s

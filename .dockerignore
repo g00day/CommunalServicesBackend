@@ -8,3 +8,5 @@ __pycache__
 backend.tar
 .pytest_cache
 test.db
+full-test.db
+
